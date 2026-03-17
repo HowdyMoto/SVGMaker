@@ -21,8 +21,7 @@ import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { exportSVG } from './ui/export';
 import { setupMenus } from './ui/menus';
 import { drawRulers } from './ui/rulers';
-import { setupSwatches } from './ui/swatches';
-import { setupColorPanel } from './ui/color-panel';
+import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
 import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons } from './ui/artboards-panel';
@@ -286,8 +285,7 @@ setupMenus(state);
 setupProperties(state);
 setupLayerButtons(state);
 setupArtboardButtons(state);
-setupSwatches(state);
-setupColorPanel(state);
+setupColorPicker(state);
 setupAlign(state);
 
 // Initial render

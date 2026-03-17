@@ -1,9 +1,7 @@
 import type { AppState } from '../core/state';
 
 export function setupProperties(state: AppState): void {
-  const fillInput = document.getElementById('prop-fill') as HTMLInputElement;
   const fillNoneBtn = document.getElementById('prop-fill-none') as HTMLButtonElement;
-  const strokeInput = document.getElementById('prop-stroke') as HTMLInputElement;
   const strokeNoneBtn = document.getElementById('prop-stroke-none') as HTMLButtonElement;
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
   const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
@@ -18,7 +16,7 @@ export function setupProperties(state: AppState): void {
   const propW = document.getElementById('prop-w') as HTMLInputElement;
   const propH = document.getElementById('prop-h') as HTMLInputElement;
 
-  // Control bar mirrors
+  // Control bar
   const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
   const ctrlFillNone = document.getElementById('ctrl-fill-none') as HTMLButtonElement;
   const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
@@ -42,18 +40,12 @@ export function setupProperties(state: AppState): void {
     const fillNone = fillNoneBtn.classList.contains('active');
     const strokeNone = strokeNoneBtn.classList.contains('active');
 
-    if (!fillNone) {
-      el.setAttribute('fill', fillInput.value);
-      shape.style.fill = fillInput.value;
-    } else {
+    if (fillNone) {
       el.setAttribute('fill', 'none');
       shape.style.fill = 'none';
     }
 
-    if (!strokeNone) {
-      el.setAttribute('stroke', strokeInput.value);
-      shape.style.stroke = strokeInput.value;
-    } else {
+    if (strokeNone) {
       el.setAttribute('stroke', 'none');
       shape.style.stroke = 'none';
     }
@@ -79,10 +71,10 @@ export function setupProperties(state: AppState): void {
 
     if (shape.type === 'rect' && propRx) {
       el.setAttribute('rx', propRx.value);
+      el.setAttribute('ry', propRx.value);
       shape.style.rx = parseFloat(propRx.value);
     }
 
-    // Stroke panel attributes
     const dash = strokeDash.value.trim();
     if (dash) {
       el.setAttribute('stroke-dasharray', dash);
@@ -126,8 +118,6 @@ export function setupProperties(state: AppState): void {
   };
 
   const updateDefaults = () => {
-    state.defaultStyle.fill = fillInput.value;
-    state.defaultStyle.stroke = strokeInput.value;
     state.defaultStyle.strokeWidth = parseFloat(strokeWidthInput.value);
     state.defaultStyle.opacity = parseFloat(opacityInput.value);
     state.defaultStyle.fontSize = parseFloat(fontSizeInput.value);
@@ -146,7 +136,7 @@ export function setupProperties(state: AppState): void {
     else updateDefaults();
   };
 
-  // Fill none toggle
+  // Fill/Stroke none toggles
   fillNoneBtn.addEventListener('click', () => {
     fillNoneBtn.classList.toggle('active');
     handleChange();
@@ -173,8 +163,17 @@ export function setupProperties(state: AppState): void {
   });
 
   const syncFromCtrl = () => {
-    fillInput.value = ctrlFill.value;
-    strokeInput.value = ctrlStroke.value;
+    // Control bar color inputs still apply colors directly
+    const shape = state.getSelectedShape();
+    if (shape) {
+      shape.element.setAttribute('fill', ctrlFill.value);
+      shape.style.fill = ctrlFill.value;
+      shape.element.setAttribute('stroke', ctrlStroke.value);
+      shape.style.stroke = ctrlStroke.value;
+    } else {
+      state.defaultStyle.fill = ctrlFill.value;
+      state.defaultStyle.stroke = ctrlStroke.value;
+    }
     strokeWidthInput.value = ctrlStrokeWeight.value;
     strokeWeight.value = ctrlStrokeWeight.value;
     opacityInput.value = String(parseFloat(ctrlOpacity.value) / 100);
@@ -205,8 +204,6 @@ export function setupProperties(state: AppState): void {
     handleChange();
   });
 
-  fillInput.addEventListener('input', handleChange);
-  strokeInput.addEventListener('input', handleChange);
   strokeWidthInput.addEventListener('change', handleChange);
   opacityInput.addEventListener('input', handleChange);
   fontSizeInput.addEventListener('change', handleChange);
@@ -254,13 +251,24 @@ export function setupProperties(state: AppState): void {
       }
     });
   });
+
+  // Stroke details expand/collapse
+  const strokeExpandBtn = document.getElementById('stroke-expand') as HTMLButtonElement;
+  const strokeDetails = document.getElementById('stroke-details') as HTMLElement;
+  // Start collapsed
+  strokeDetails.classList.add('collapsed');
+  strokeExpandBtn.classList.add('collapsed');
+  strokeExpandBtn.addEventListener('click', () => {
+    strokeDetails.classList.toggle('collapsed');
+    strokeExpandBtn.classList.toggle('collapsed');
+  });
 }
 
 export function updatePropertiesPanel(state: AppState): void {
-  const fillInput = document.getElementById('prop-fill') as HTMLInputElement;
   const fillNoneBtn = document.getElementById('prop-fill-none') as HTMLButtonElement;
-  const strokeInput = document.getElementById('prop-stroke') as HTMLInputElement;
   const strokeNoneBtn = document.getElementById('prop-stroke-none') as HTMLButtonElement;
+  const fillPreview = document.getElementById('prop-fill-preview') as HTMLElement;
+  const strokePreview = document.getElementById('prop-stroke-preview') as HTMLElement;
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
   const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
   const opacityVal = document.getElementById('prop-opacity-val')!;
@@ -270,6 +278,7 @@ export function updatePropertiesPanel(state: AppState): void {
   const italicBtn = document.getElementById('prop-italic') as HTMLButtonElement;
   const typePanel = document.getElementById('panel-type')!;
   const propRx = document.getElementById('prop-rx') as HTMLInputElement;
+  const rxRow = document.getElementById('prop-corners-row') as HTMLElement;
   const propX = document.getElementById('prop-x') as HTMLInputElement;
   const propY = document.getElementById('prop-y') as HTMLInputElement;
   const propW = document.getElementById('prop-w') as HTMLInputElement;
@@ -277,7 +286,7 @@ export function updatePropertiesPanel(state: AppState): void {
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
   const strokeDash = document.getElementById('stroke-dash') as HTMLInputElement;
 
-  // Control bar mirrors
+  // Control bar
   const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
   const ctrlFillNone = document.getElementById('ctrl-fill-none') as HTMLButtonElement;
   const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
@@ -297,21 +306,21 @@ export function updatePropertiesPanel(state: AppState): void {
 
   if (!shape) {
     const ds = state.defaultStyle;
-    fillInput.value = ds.fill;
     fillNoneBtn.classList.toggle('active', state.fillNone);
-    strokeInput.value = ds.stroke;
     strokeNoneBtn.classList.toggle('active', state.strokeNone);
+    fillPreview.style.background = state.fillNone ? 'transparent' : ds.fill;
+    strokePreview.style.background = state.strokeNone ? 'transparent' : ds.stroke;
     strokeWidthInput.value = String(ds.strokeWidth);
     opacityInput.value = String(ds.opacity);
     opacityVal.textContent = `${Math.round(ds.opacity * 100)}%`;
     propRx.value = String(ds.rx ?? 0);
+    rxRow.style.display = 'none';
     typePanel.style.display = 'none';
     propX.value = '0'; propY.value = '0'; propW.value = '0'; propH.value = '0';
 
-    // Sync controls
-    ctrlFill.value = ds.fill;
+    ctrlFill.value = ds.fill === 'none' ? '#000000' : ds.fill;
     ctrlFillNone.classList.toggle('active', state.fillNone);
-    ctrlStroke.value = ds.stroke;
+    ctrlStroke.value = ds.stroke === 'none' ? '#000000' : ds.stroke;
     ctrlStrokeNone.classList.toggle('active', state.strokeNone);
     ctrlStrokeWeight.value = String(ds.strokeWidth);
     ctrlOpacity.value = String(Math.round(ds.opacity * 100));
@@ -319,7 +328,6 @@ export function updatePropertiesPanel(state: AppState): void {
     strokeWeight.value = String(ds.strokeWidth);
     strokeDash.value = ds.strokeDasharray ?? '';
 
-    // Toolbar swatches
     fillSwatch.style.background = state.fillNone ? 'transparent' : ds.fill;
     strokeSwatch.style.borderColor = state.strokeNone ? 'transparent' : ds.stroke;
 
@@ -330,18 +338,18 @@ export function updatePropertiesPanel(state: AppState): void {
   const isFillNone = s.fill === 'none';
   const isStrokeNone = s.stroke === 'none';
 
-  fillInput.value = isFillNone ? '#000000' : s.fill;
   fillNoneBtn.classList.toggle('active', isFillNone);
-  strokeInput.value = isStrokeNone ? '#000000' : s.stroke;
   strokeNoneBtn.classList.toggle('active', isStrokeNone);
+  fillPreview.style.background = isFillNone ? 'transparent' : s.fill;
+  strokePreview.style.background = isStrokeNone ? 'transparent' : s.stroke;
   strokeWidthInput.value = String(s.strokeWidth);
   opacityInput.value = String(s.opacity);
   opacityVal.textContent = `${Math.round(s.opacity * 100)}%`;
   propRx.value = String(s.rx ?? 0);
+  rxRow.style.display = shape.type === 'rect' ? '' : 'none';
   strokeWeight.value = String(s.strokeWidth);
   strokeDash.value = s.strokeDasharray ?? '';
 
-  // Sync controls
   ctrlFill.value = isFillNone ? '#000000' : s.fill;
   ctrlFillNone.classList.toggle('active', isFillNone);
   ctrlStroke.value = isStrokeNone ? '#000000' : s.stroke;
@@ -349,11 +357,9 @@ export function updatePropertiesPanel(state: AppState): void {
   ctrlStrokeWeight.value = String(s.strokeWidth);
   ctrlOpacity.value = String(Math.round(s.opacity * 100));
 
-  // Toolbar swatches
   fillSwatch.style.background = isFillNone ? 'transparent' : s.fill;
   strokeSwatch.style.borderColor = isStrokeNone ? 'transparent' : s.stroke;
 
-  // Type panel
   typePanel.style.display = shape.type === 'text' ? '' : 'none';
   if (shape.type === 'text') {
     fontSizeInput.value = String(s.fontSize ?? 24);
@@ -362,7 +368,6 @@ export function updatePropertiesPanel(state: AppState): void {
     italicBtn.classList.toggle('active', s.fontStyle === 'italic');
   }
 
-  // Position
   try {
     const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
     const vals = {
@@ -377,7 +382,6 @@ export function updatePropertiesPanel(state: AppState): void {
     ctrlW.value = vals.w; ctrlH.value = vals.h;
   } catch { /* ignore */ }
 
-  // Stroke cap/join
   const capBtns = document.querySelectorAll('#stroke-caps button');
   capBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-cap') === (s.strokeLinecap ?? 'butt')));
   const joinBtns = document.querySelectorAll('#stroke-joins button');
