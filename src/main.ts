@@ -15,6 +15,7 @@ import { EyedropperTool } from './tools/eyedropper';
 import { StarTool } from './tools/star';
 import { PolygonShapeTool } from './tools/polygon-tool';
 import { ArtboardTool } from './tools/artboard-tool';
+import { ImageTool } from './tools/image';
 import { updateSelectionOverlay } from './ui/selection-overlay';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
@@ -25,6 +26,7 @@ import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
 import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons } from './ui/artboards-panel';
+import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { showExportDialog } from './ui/export-dialog';
 import { saveProject, openProject } from './ui/project-file';
 import type { Tool } from './tools/base';
@@ -56,6 +58,7 @@ const toolLabels: Record<ToolName, string> = {
   star: 'Star Tool',
   polygon: 'Polygon Tool',
   artboard: 'Artboard Tool',
+  image: 'Image Tool',
 };
 
 // Tools
@@ -75,6 +78,7 @@ const tools: Record<ToolName, Tool> = {
   star: new StarTool(state, canvas, svgCanvas),
   polygon: new PolygonShapeTool(state, canvas, svgCanvas),
   artboard: new ArtboardTool(state, canvas, svgCanvas),
+  image: new ImageTool(state, canvas, svgCanvas),
 };
 
 let activeTool: Tool = tools.select;
@@ -97,6 +101,7 @@ function onStateChange(): void {
   updatePropertiesPanel(state);
   updateLayersPanel(state);
   updateArtboardsPanel(state);
+  updateSymbolsPanel(state);
 }
 
 function setTool(toolName: ToolName): void {
@@ -179,7 +184,12 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     switch (e.key) {
       case 'z': e.preventDefault(); if (e.shiftKey) state.redo(); else state.undo(); break;
       case 'y': e.preventDefault(); state.redo(); break;
+      case 'x': e.preventDefault(); if (state.selectedShapeId) state.cutShape(state.selectedShapeId); break;
+      case 'c': e.preventDefault(); if (state.selectedShapeId) state.copyShape(state.selectedShapeId); break;
+      case 'v': e.preventDefault(); state.pasteClipboard(); break;
       case 'd': e.preventDefault(); if (state.selectedShapeId) state.duplicateShape(state.selectedShapeId); break;
+      case 'g': e.preventDefault(); if (e.shiftKey) { if (state.selectedShapeId) state.ungroupShape(state.selectedShapeId); } else { state.groupSelectedShapes(); } break;
+      case 'a': e.preventDefault(); if (e.shiftKey) { state.selectShape(null); } else { state.selectMultiple(state.shapes.map(s => s.id)); } break;
       case 's': e.preventDefault(); if (e.shiftKey) exportSVG(state); else saveProject(state); break;
       case 'e': e.preventDefault(); exportSVG(state); break;
       case 'o': e.preventDefault(); openProject(state); break;
@@ -209,7 +219,12 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     case 'i': case 'I': setTool('eyedropper'); break;
     case '\\': setTool('line'); break;
     case 'Delete': case 'Backspace':
-      if (state.selectedShapeId) state.removeShape(state.selectedShapeId);
+      if (state.selectedShapeIds.length > 1) {
+        const ids = [...state.selectedShapeIds];
+        for (const id of ids) state.removeShape(id);
+      } else if (state.selectedShapeId) {
+        state.removeShape(state.selectedShapeId);
+      }
       break;
     case ' ':
       e.preventDefault();
@@ -287,6 +302,7 @@ setupLayerButtons(state);
 setupArtboardButtons(state);
 setupColorPicker(state);
 setupAlign(state);
+setupSymbolButtons(state);
 
 // Initial render
 const initBounds = getArtboardsBounds();
@@ -296,6 +312,24 @@ updateArtboardsPanel(state);
 drawRulers(canvas);
 
 svgCanvas.setAttribute('data-tool', 'select');
+
+// Drag-and-drop image support
+const canvasArea = document.getElementById('canvas-area')!;
+canvasArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = 'copy';
+});
+canvasArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const files = e.dataTransfer?.files;
+  if (!files) return;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.type.startsWith('image/')) {
+      (tools.image as ImageTool).loadImageFile(file);
+    }
+  }
+});
 
 window.addEventListener('resize', () => {
   canvas.initSize(getArtboardsBounds());

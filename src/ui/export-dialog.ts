@@ -166,15 +166,17 @@ async function exportArtboards(
   scale: number,
 ): Promise<void> {
   const drawingSvg = state.getDrawingLayerSVG();
+  const defsContent = state.getDefsContent();
+  const defsBlock = defsContent ? `<defs>${defsContent}</defs>\n  ` : '';
 
   for (const ab of artboards) {
     const fileName = sanitizeFilename(ab.name);
 
     if (format === 'svg') {
-      const svgStr = buildArtboardSVG(ab, drawingSvg);
+      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock);
       downloadBlob(new Blob([svgStr], { type: 'image/svg+xml' }), `${fileName}.svg`);
     } else {
-      const svgStr = buildArtboardSVG(ab, drawingSvg);
+      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock);
       const blob = await rasterize(svgStr, ab.width, ab.height, scale, format);
       downloadBlob(blob, `${fileName}.${format}`);
     }
@@ -186,13 +188,13 @@ async function exportArtboards(
   }
 }
 
-function buildArtboardSVG(ab: Artboard, drawingSvg: string): string {
+function buildArtboardSVG(ab: Artboard, drawingSvg: string, defsBlock: string): string {
   // Clip drawing content to the artboard bounds via a viewBox
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
      viewBox="${ab.x} ${ab.y} ${ab.width} ${ab.height}"
      width="${ab.width}" height="${ab.height}">
-  <rect x="${ab.x}" y="${ab.y}" width="${ab.width}" height="${ab.height}" fill="white"/>
+  ${defsBlock}<rect x="${ab.x}" y="${ab.y}" width="${ab.width}" height="${ab.height}" fill="white"/>
   ${drawingSvg}
 </svg>`;
 }

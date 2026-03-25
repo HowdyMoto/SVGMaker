@@ -56,6 +56,27 @@ function handleMenuAction(action: string, state: AppState): void {
     case 'export-all': showExportDialog(state); break;
     case 'undo': state.undo(); break;
     case 'redo': state.redo(); break;
+    case 'cut':
+      if (state.selectedShapeId) state.cutShape(state.selectedShapeId);
+      break;
+    case 'copy':
+      if (state.selectedShapeId) state.copyShape(state.selectedShapeId);
+      break;
+    case 'paste':
+      state.pasteClipboard();
+      break;
+    case 'group':
+      state.groupSelectedShapes();
+      break;
+    case 'ungroup':
+      if (state.selectedShapeId) state.ungroupShape(state.selectedShapeId);
+      break;
+    case 'create-symbol':
+      if (state.selectedShapeId) state.createSymbolFromShape(state.selectedShapeId);
+      break;
+    case 'detach-symbol':
+      if (state.selectedShapeId) state.detachSymbolInstance(state.selectedShapeId);
+      break;
     case 'duplicate':
       if (state.selectedShapeId) state.duplicateShape(state.selectedShapeId);
       break;
@@ -63,7 +84,9 @@ function handleMenuAction(action: string, state: AppState): void {
       if (state.selectedShapeId) state.removeShape(state.selectedShapeId);
       break;
     case 'select-all':
-      if (state.shapes.length > 0) state.selectShape(state.shapes[state.shapes.length - 1].id);
+      if (state.shapes.length > 0) {
+        state.selectMultiple(state.shapes.map(s => s.id));
+      }
       break;
     case 'deselect':
       state.selectShape(null);
@@ -89,6 +112,10 @@ function handleMenuAction(action: string, state: AppState): void {
         s.visible = true;
         (s.element as SVGElement).style.display = '';
       });
+      state.onChange_public();
+      break;
+    case 'toggle-transparency':
+      state.showTransparency = !state.showTransparency;
       state.onChange_public();
       break;
     case 'toggle-grid': {

@@ -1235,5 +1235,250 @@ input, select, button { font-family: inherit; font-size: 11px; }
   gap: 2px;
 }
 
+/* ============ PAINT PICKER TABS & GRADIENT/PATTERN ============ */
+
+.cpicker-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border: 1px solid var(--ai-border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cpicker-tab {
+  flex: 1;
+  background: var(--ai-input);
+  color: var(--ai-text-dim);
+  border: none;
+  padding: 4px 0;
+  font-size: 10px;
+  cursor: pointer;
+  border-right: 1px solid var(--ai-border-light);
+}
+.cpicker-tab:last-child { border-right: none; }
+.cpicker-tab.active {
+  background: var(--ai-accent);
+  color: #fff;
+}
+.cpicker-tab:hover:not(.active) {
+  background: var(--ai-hover);
+}
+
+.cpicker-content {
+  min-height: 80px;
+}
+
+.cpicker-grad-preview {
+  height: 28px;
+  border-radius: 3px;
+  border: 1px solid var(--ai-border-light);
+  margin-bottom: 6px;
+}
+
+.cpicker-stop-bar {
+  position: relative;
+  height: 18px;
+  background: var(--ai-input);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 2px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.cpicker-stop-handle {
+  position: absolute;
+  top: -2px;
+  width: 10px;
+  height: 20px;
+  margin-left: -5px;
+  border: 2px solid var(--ai-border-light);
+  border-radius: 2px;
+  cursor: ew-resize;
+  box-sizing: border-box;
+}
+.cpicker-stop-handle.active {
+  border-color: var(--ai-accent);
+  z-index: 1;
+}
+
+.cpicker-stop-editor {
+  margin-bottom: 6px;
+}
+
+.cpicker-stop-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--ai-text-dim);
+}
+
+.cpicker-stop-color {
+  width: 28px;
+  height: 20px;
+  border: 1px solid var(--ai-border-light);
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+
+.cpicker-stop-rm {
+  background: none;
+  border: 1px solid var(--ai-border-light);
+  color: var(--ai-text-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 5px;
+  margin-left: auto;
+}
+.cpicker-stop-rm:hover {
+  background: #c00;
+  color: #fff;
+}
+
+.cpicker-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--ai-text-dim);
+}
+.cpicker-dir-row label {
+  flex-shrink: 0;
+  min-width: 40px;
+}
+
+.cpicker-select {
+  flex: 1;
+  height: 22px;
+  background: var(--ai-input);
+  color: var(--ai-text);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 2px;
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+.cpicker-pat-preview {
+  height: 48px;
+  border: 1px solid var(--ai-border-light);
+  border-radius: 3px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.cpicker-upload-btn {
+  width: 100%;
+  padding: 6px;
+  background: var(--ai-input);
+  color: var(--ai-text);
+  border: 1px dashed var(--ai-border-light);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.cpicker-upload-btn:hover {
+  border-color: var(--ai-accent);
+  color: var(--ai-accent);
+}
+
+/* ============ LAYER HIERARCHY ============ */
+
+/* Indent spacer container */
+.layer-indent {
+  display: inline-flex;
+  position: relative;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+/* Vertical guide lines for each depth level */
+.layer-indent-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ai-border-light);
+}
+
+/* Child rows get a subtle left border accent */
+.layer-child {
+  background: rgba(255, 255, 255, 0.015);
+}
+.layer-child:hover {
+  background: var(--ai-hover);
+}
+
+/* Group rows are slightly bolder */
+.layer-group {
+  font-weight: 500;
+}
+
+/* Group color indicator */
+.layer-color-group {
+  background: #e0a030;
+}
+
+/* Tree branch connector (the little "L" shape for leaf children) */
+.layer-tree-connector {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ai-border-light);
+  border-bottom: 1px solid var(--ai-border-light);
+  border-radius: 0 0 0 2px;
+  margin-bottom: 4px;
+}
+
+/* Expand/collapse toggle arrow */
+.layer-group-toggle {
+  cursor: pointer;
+  font-size: 8px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+  line-height: 1;
+}
+.layer-group-toggle:hover { opacity: 1; }
+
+.symbol-place-btn {
+  background: none;
+  border: 1px solid var(--ai-border-light);
+  color: var(--ai-text);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 5px;
+  margin-left: auto;
+  line-height: 16px;
+}
+.symbol-place-btn:hover {
+  background: var(--ai-accent);
+  color: #fff;
+}
+
+.panel-unit {
+  font-size: 10px;
+  color: var(--ai-text-dim);
+  margin-left: 2px;
+}
+
+.ctrl-unit {
+  font-size: 10px;
+  color: var(--ai-text-dim);
+  margin-left: 1px;
+  margin-right: 4px;
+}
+
+#ctrl-rotation, #prop-rotation {
+  width: 52px;
+}
+
 /* ============ RESPONSIVE HELPERS ============ */
 .hidden { display: none !important; }

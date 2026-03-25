@@ -1,5 +1,31 @@
 import type { AppState } from '../core/state';
 
+/** Convert SVG fill/stroke values to CSS-renderable backgrounds for preview swatches */
+function paintPreviewBg(value: string, state: AppState): string {
+  if (!value || value === 'none') return 'transparent';
+  if (value.startsWith('url(#grad-')) {
+    const id = value.match(/url\(#(grad-\d+)\)/)?.[1];
+    if (id) {
+      const grad = state.getGradientById(id);
+      if (grad) {
+        const stops = grad.stops.map(s => `${s.color} ${Math.round(s.offset * 100)}%`).join(', ');
+        if (grad.type === 'linear') {
+          const dx = (grad.x2 ?? 1) - (grad.x1 ?? 0);
+          const dy = (grad.y2 ?? 0) - (grad.y1 ?? 0);
+          const angle = Math.round((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360);
+          return `linear-gradient(${angle}deg, ${stops})`;
+        }
+        return `radial-gradient(circle, ${stops})`;
+      }
+    }
+  }
+  if (value.startsWith('url(#pat-')) {
+    return 'repeating-conic-gradient(#555 0% 25%, #666 0% 50%) 0 0/8px 8px';
+  }
+  if (value.startsWith('url(')) return '#888';
+  return value;
+}
+
 export function setupProperties(state: AppState): void {
   const fillNoneBtn = document.getElementById('prop-fill-none') as HTMLButtonElement;
   const strokeNoneBtn = document.getElementById('prop-stroke-none') as HTMLButtonElement;
@@ -15,6 +41,7 @@ export function setupProperties(state: AppState): void {
   const propY = document.getElementById('prop-y') as HTMLInputElement;
   const propW = document.getElementById('prop-w') as HTMLInputElement;
   const propH = document.getElementById('prop-h') as HTMLInputElement;
+  const propRotation = document.getElementById('prop-rotation') as HTMLInputElement;
 
   // Control bar
   const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
@@ -27,6 +54,7 @@ export function setupProperties(state: AppState): void {
   const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
   const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
   const ctrlH = document.getElementById('ctrl-h') as HTMLInputElement;
+  const ctrlRotation = document.getElementById('ctrl-rotation') as HTMLInputElement;
 
   // Stroke panel
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
@@ -98,7 +126,7 @@ export function setupProperties(state: AppState): void {
     const w = parseFloat(propW.value);
     const h = parseFloat(propH.value);
 
-    if (tag === 'rect') {
+    if (tag === 'rect' || tag === 'image' || tag === 'use') {
       el.setAttribute('x', String(x));
       el.setAttribute('y', String(y));
       el.setAttribute('width', String(w));
@@ -111,6 +139,23 @@ export function setupProperties(state: AppState): void {
     } else if (tag === 'text') {
       el.setAttribute('x', String(x));
       el.setAttribute('y', String(y + h));
+    }
+
+    // Apply rotation
+    const rotation = parseFloat(propRotation.value) || 0;
+    shape.rotation = rotation;
+    const bbox = (el as unknown as SVGGraphicsElement).getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    let transform = el.getAttribute('transform') ?? '';
+    transform = transform.replace(/rotate\([^)]*\)\s*/g, '').trim();
+    if (rotation !== 0) {
+      transform = `rotate(${rotation}, ${cx}, ${cy})` + (transform ? ' ' + transform : '');
+    }
+    if (transform) {
+      el.setAttribute('transform', transform);
+    } else {
+      el.removeAttribute('transform');
     }
 
     state.saveHistory();
@@ -196,6 +241,10 @@ export function setupProperties(state: AppState): void {
   ctrlY.addEventListener('change', syncPosFromCtrl);
   ctrlW.addEventListener('change', syncPosFromCtrl);
   ctrlH.addEventListener('change', syncPosFromCtrl);
+  ctrlRotation.addEventListener('change', () => {
+    propRotation.value = ctrlRotation.value;
+    applyPosition();
+  });
 
   // Stroke weight sync
   strokeWeight.addEventListener('change', () => {
@@ -215,6 +264,7 @@ export function setupProperties(state: AppState): void {
   propY.addEventListener('change', applyPosition);
   propW.addEventListener('change', applyPosition);
   propH.addEventListener('change', applyPosition);
+  propRotation.addEventListener('change', applyPosition);
 
   // Stroke cap buttons
   document.querySelectorAll('#stroke-caps button').forEach(btn => {
@@ -283,6 +333,7 @@ export function updatePropertiesPanel(state: AppState): void {
   const propY = document.getElementById('prop-y') as HTMLInputElement;
   const propW = document.getElementById('prop-w') as HTMLInputElement;
   const propH = document.getElementById('prop-h') as HTMLInputElement;
+  const propRotation = document.getElementById('prop-rotation') as HTMLInputElement;
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
   const strokeDash = document.getElementById('stroke-dash') as HTMLInputElement;
 
@@ -297,6 +348,7 @@ export function updatePropertiesPanel(state: AppState): void {
   const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
   const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
   const ctrlH = document.getElementById('ctrl-h') as HTMLInputElement;
+  const ctrlRotation = document.getElementById('ctrl-rotation') as HTMLInputElement;
 
   // Toolbar swatches
   const fillSwatch = document.querySelector('#tb-fill-swatch .swatch-inner') as HTMLElement;
@@ -308,8 +360,8 @@ export function updatePropertiesPanel(state: AppState): void {
     const ds = state.defaultStyle;
     fillNoneBtn.classList.toggle('active', state.fillNone);
     strokeNoneBtn.classList.toggle('active', state.strokeNone);
-    fillPreview.style.background = state.fillNone ? 'transparent' : ds.fill;
-    strokePreview.style.background = state.strokeNone ? 'transparent' : ds.stroke;
+    fillPreview.style.background = state.fillNone ? 'transparent' : paintPreviewBg(ds.fill, state);
+    strokePreview.style.background = state.strokeNone ? 'transparent' : paintPreviewBg(ds.stroke, state);
     strokeWidthInput.value = String(ds.strokeWidth);
     opacityInput.value = String(ds.opacity);
     opacityVal.textContent = `${Math.round(ds.opacity * 100)}%`;
@@ -317,19 +369,21 @@ export function updatePropertiesPanel(state: AppState): void {
     rxRow.style.display = 'none';
     typePanel.style.display = 'none';
     propX.value = '0'; propY.value = '0'; propW.value = '0'; propH.value = '0';
+    propRotation.value = '0';
 
-    ctrlFill.value = ds.fill === 'none' ? '#000000' : ds.fill;
+    ctrlFill.value = (ds.fill === 'none' || ds.fill.startsWith('url(')) ? '#000000' : ds.fill;
     ctrlFillNone.classList.toggle('active', state.fillNone);
-    ctrlStroke.value = ds.stroke === 'none' ? '#000000' : ds.stroke;
+    ctrlStroke.value = (ds.stroke === 'none' || ds.stroke.startsWith('url(')) ? '#000000' : ds.stroke;
     ctrlStrokeNone.classList.toggle('active', state.strokeNone);
     ctrlStrokeWeight.value = String(ds.strokeWidth);
     ctrlOpacity.value = String(Math.round(ds.opacity * 100));
     ctrlX.value = '0'; ctrlY.value = '0'; ctrlW.value = '0'; ctrlH.value = '0';
+    ctrlRotation.value = '0';
     strokeWeight.value = String(ds.strokeWidth);
     strokeDash.value = ds.strokeDasharray ?? '';
 
-    fillSwatch.style.background = state.fillNone ? 'transparent' : ds.fill;
-    strokeSwatch.style.borderColor = state.strokeNone ? 'transparent' : ds.stroke;
+    fillSwatch.style.background = state.fillNone ? 'transparent' : paintPreviewBg(ds.fill, state);
+    strokeSwatch.style.borderColor = state.strokeNone ? 'transparent' : (ds.stroke.startsWith('url(') ? '#888' : ds.stroke);
 
     return;
   }
@@ -340,8 +394,8 @@ export function updatePropertiesPanel(state: AppState): void {
 
   fillNoneBtn.classList.toggle('active', isFillNone);
   strokeNoneBtn.classList.toggle('active', isStrokeNone);
-  fillPreview.style.background = isFillNone ? 'transparent' : s.fill;
-  strokePreview.style.background = isStrokeNone ? 'transparent' : s.stroke;
+  fillPreview.style.background = isFillNone ? 'transparent' : paintPreviewBg(s.fill, state);
+  strokePreview.style.background = isStrokeNone ? 'transparent' : paintPreviewBg(s.stroke, state);
   strokeWidthInput.value = String(s.strokeWidth);
   opacityInput.value = String(s.opacity);
   opacityVal.textContent = `${Math.round(s.opacity * 100)}%`;
@@ -350,15 +404,15 @@ export function updatePropertiesPanel(state: AppState): void {
   strokeWeight.value = String(s.strokeWidth);
   strokeDash.value = s.strokeDasharray ?? '';
 
-  ctrlFill.value = isFillNone ? '#000000' : s.fill;
+  ctrlFill.value = (isFillNone || s.fill.startsWith('url(')) ? '#000000' : s.fill;
   ctrlFillNone.classList.toggle('active', isFillNone);
-  ctrlStroke.value = isStrokeNone ? '#000000' : s.stroke;
+  ctrlStroke.value = (isStrokeNone || s.stroke.startsWith('url(')) ? '#000000' : s.stroke;
   ctrlStrokeNone.classList.toggle('active', isStrokeNone);
   ctrlStrokeWeight.value = String(s.strokeWidth);
   ctrlOpacity.value = String(Math.round(s.opacity * 100));
 
-  fillSwatch.style.background = isFillNone ? 'transparent' : s.fill;
-  strokeSwatch.style.borderColor = isStrokeNone ? 'transparent' : s.stroke;
+  fillSwatch.style.background = isFillNone ? 'transparent' : paintPreviewBg(s.fill, state);
+  strokeSwatch.style.borderColor = isStrokeNone ? 'transparent' : (s.stroke.startsWith('url(') ? '#888' : s.stroke);
 
   typePanel.style.display = shape.type === 'text' ? '' : 'none';
   if (shape.type === 'text') {
@@ -380,6 +434,10 @@ export function updatePropertiesPanel(state: AppState): void {
     propW.value = vals.w; propH.value = vals.h;
     ctrlX.value = vals.x; ctrlY.value = vals.y;
     ctrlW.value = vals.w; ctrlH.value = vals.h;
+
+    const rotVal = String(Math.round(shape.rotation ?? 0));
+    propRotation.value = rotVal;
+    ctrlRotation.value = rotVal;
   } catch { /* ignore */ }
 
   const capBtns = document.querySelectorAll('#stroke-caps button');

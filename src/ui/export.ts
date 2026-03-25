@@ -2,10 +2,12 @@ import type { AppState } from '../core/state';
 
 export function exportSVG(state: AppState): void {
   const content = state.getDrawingLayerSVG();
+  const defsContent = state.getDefsContent();
   const ab = state.artboard;
+  const defsBlock = defsContent ? `<defs>${defsContent}</defs>\n` : '';
   const svgString = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">
-${content}
+${defsBlock}${content}
 </svg>`;
 
   const blob = new Blob([svgString], { type: 'image/svg+xml' });
@@ -34,8 +36,10 @@ export function importSVG(state: AppState): void {
 
 export function exportPNG(state: AppState): void {
   const content = state.getDrawingLayerSVG();
+  const defsContent = state.getDefsContent();
   const ab = state.artboard;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}"><rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
+  const defsBlock = defsContent ? `<defs>${defsContent}</defs>` : '';
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${defsBlock}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
 
   const img = new Image();
   const blob = new Blob([svgString], { type: 'image/svg+xml' });

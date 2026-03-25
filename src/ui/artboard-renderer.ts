@@ -46,14 +46,24 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
     const isActive = ab.id === state.activeArtboardId;
     const isSelected = ab.id === state.selectedArtboardId && isArtboardTool;
 
-    // White artboard background
-    const bg = document.createElementNS(NS, 'rect');
-    bg.setAttribute('x', String(ab.x));
-    bg.setAttribute('y', String(ab.y));
-    bg.setAttribute('width', String(ab.width));
-    bg.setAttribute('height', String(ab.height));
-    bg.setAttribute('fill', 'white');
-    abLayer.appendChild(bg);
+    // Artboard background — checkerboard for transparency or solid white
+    if (state.showTransparency) {
+      const checkBg = document.createElementNS(NS, 'rect');
+      checkBg.setAttribute('x', String(ab.x));
+      checkBg.setAttribute('y', String(ab.y));
+      checkBg.setAttribute('width', String(ab.width));
+      checkBg.setAttribute('height', String(ab.height));
+      checkBg.setAttribute('fill', 'url(#transparency-check)');
+      abLayer.appendChild(checkBg);
+    } else {
+      const bg = document.createElementNS(NS, 'rect');
+      bg.setAttribute('x', String(ab.x));
+      bg.setAttribute('y', String(ab.y));
+      bg.setAttribute('width', String(ab.width));
+      bg.setAttribute('height', String(ab.height));
+      bg.setAttribute('fill', 'white');
+      abLayer.appendChild(bg);
+    }
 
     // Grid overlay if enabled
     if (showGrid) {
