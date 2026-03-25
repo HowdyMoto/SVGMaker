@@ -19,8 +19,10 @@
   --ai-accent:       #2196F3;
   --ai-accent-dim:   #1976D2;
   --ai-highlight:    #4a4a4a;
-  --ai-hover:        #4a4a4a;
+  --ai-hover:        #555555;
   --ai-active:       #505050;
+  --ai-btn:          #484848;
+  --ai-btn-hover:    #5a5a5a;
   --ai-menu-bg:      #2c2c2c;
   --ai-menu-hover:   #404040;
   --ai-white:        #ffffff;
@@ -204,8 +206,8 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .ctrl-none-btn {
   width: 18px;
   height: 18px;
-  background: none;
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
@@ -214,17 +216,17 @@ input, select, button { font-family: inherit; font-size: 11px; }
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: background 0.1s;
 }
 
 .ctrl-none-btn:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: var(--ai-text);
 }
 
 .ctrl-none-btn.active {
   background: var(--ai-danger);
   color: white;
-  border-color: var(--ai-danger);
 }
 
 .ctrl-sep {
@@ -276,12 +278,13 @@ input, select, button { font-family: inherit; font-size: 11px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
+  background: transparent;
   border: none;
   border-radius: 3px;
   color: var(--ai-text);
   cursor: pointer;
   padding: 3px;
+  transition: background 0.1s;
 }
 
 .tool-btn svg {
@@ -290,12 +293,11 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .tool-btn:hover {
-  background: var(--ai-hover);
+  background: var(--ai-btn-hover);
 }
 
 .tool-btn.active {
-  background: var(--ai-active);
-  outline: 1px solid var(--ai-text-dim);
+  background: var(--ai-btn);
 }
 
 .tool-divider {
@@ -368,8 +370,9 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .swatch-swap, .swatch-default {
   width: 14px;
   height: 14px;
-  background: none;
+  background: var(--ai-btn);
   border: none;
+  border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
   font-size: 9px;
@@ -377,9 +380,11 @@ input, select, button { font-family: inherit; font-size: 11px; }
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.1s;
 }
 
 .swatch-swap:hover, .swatch-default:hover {
+  background: var(--ai-btn-hover);
   color: var(--ai-text);
 }
 
@@ -444,17 +449,19 @@ input, select, button { font-family: inherit; font-size: 11px; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
+  padding: 6px 10px 6px 13px;
   background: var(--ai-panel-dark);
   cursor: default;
   border-bottom: 1px solid var(--ai-border);
+  border-left: 3px solid var(--ai-border-light);
 }
 
 .panel-header span {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--ai-text-bright);
-  text-transform: none;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 .panel-collapse {
@@ -653,8 +660,8 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .appearance-toggle {
   width: 44px;
   height: 24px;
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   border-radius: 3px;
   color: var(--ai-text);
   cursor: pointer;
@@ -662,20 +669,20 @@ input, select, button { font-family: inherit; font-size: 11px; }
   font-weight: 600;
   padding: 0;
   flex-shrink: 0;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.1s;
   position: relative;
   overflow: hidden;
   text-align: center;
 }
 
 .appearance-toggle:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: var(--ai-text-bright);
 }
 
 .appearance-toggle.active {
   color: var(--ai-text-dim);
-  border-color: var(--ai-danger);
+  background: var(--ai-panel-dark);
 }
 
 .appearance-toggle.active::after {
@@ -739,14 +746,16 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .btn-group button {
   width: 28px;
   height: 22px;
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
+  border-radius: 3px;
   color: var(--ai-text-dim);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2px;
+  transition: background 0.1s;
 }
 
 .btn-group button svg {
@@ -755,13 +764,13 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .btn-group button:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
+  color: var(--ai-text);
 }
 
 .btn-group button.active {
-  background: var(--ai-active);
+  background: var(--ai-accent-dim);
   color: var(--ai-text-bright);
-  border-color: var(--ai-accent);
 }
 
 .panel-field input[type="text"] {
@@ -880,15 +889,16 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .align-buttons button {
   width: 28px;
   height: 24px;
-  background: var(--ai-input);
+  background: var(--ai-panel-dark);
   border: 1px solid var(--ai-border-light);
-  border-radius: 2px;
+  border-radius: 3px;
   color: var(--ai-text-dim);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 3px;
+  transition: background 0.1s, border-color 0.1s;
 }
 
 .align-buttons button svg {
@@ -897,6 +907,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .align-buttons button:hover {
+  background: var(--ai-hover);
   border-color: var(--ai-accent);
   color: var(--ai-text);
 }
@@ -905,19 +916,23 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .text-style-btn {
   width: 26px;
   height: 22px;
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
-  border-radius: 2px;
+  background: var(--ai-btn);
+  border: none;
+  border-radius: 3px;
   color: var(--ai-text);
   cursor: pointer;
   font-style: italic;
   font-weight: bold;
   font-family: serif;
+  transition: background 0.1s;
+}
+
+.text-style-btn:hover {
+  background: var(--ai-btn-hover);
 }
 
 .text-style-btn.active {
   background: var(--ai-accent);
-  border-color: var(--ai-accent);
   color: white;
 }
 
@@ -1014,16 +1029,17 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .panel-footer button {
   flex: 1;
   height: 22px;
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
   font-size: 12px;
+  transition: background 0.1s;
 }
 
 .panel-footer button:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: var(--ai-text);
 }
 
@@ -1063,8 +1079,8 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .status-btn {
   width: 18px;
   height: 16px;
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
@@ -1073,10 +1089,11 @@ input, select, button { font-family: inherit; font-size: 11px; }
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: background 0.1s;
 }
 
 .status-btn:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: var(--ai-text);
 }
 
@@ -1239,30 +1256,28 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .cpicker-tabs {
   display: flex;
-  gap: 0;
+  gap: 2px;
   margin-bottom: 8px;
-  border: 1px solid var(--ai-border-light);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .cpicker-tab {
   flex: 1;
-  background: var(--ai-input);
+  background: var(--ai-btn);
   color: var(--ai-text-dim);
   border: none;
   padding: 4px 0;
   font-size: 10px;
   cursor: pointer;
-  border-right: 1px solid var(--ai-border-light);
+  transition: background 0.1s;
 }
-.cpicker-tab:last-child { border-right: none; }
 .cpicker-tab.active {
   background: var(--ai-accent);
   color: #fff;
 }
 .cpicker-tab:hover:not(.active) {
-  background: var(--ai-hover);
+  background: var(--ai-btn-hover);
 }
 
 .cpicker-content {
@@ -1325,14 +1340,15 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .cpicker-stop-rm {
-  background: none;
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   color: var(--ai-text-dim);
   border-radius: 2px;
   cursor: pointer;
   font-size: 10px;
   padding: 2px 5px;
   margin-left: auto;
+  transition: background 0.1s;
 }
 .cpicker-stop-rm:hover {
   background: #c00;
@@ -1374,16 +1390,17 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .cpicker-upload-btn {
   width: 100%;
   padding: 6px;
-  background: var(--ai-input);
+  background: var(--ai-btn);
   color: var(--ai-text);
-  border: 1px dashed var(--ai-border-light);
+  border: none;
   border-radius: 3px;
   cursor: pointer;
   font-size: 11px;
   margin-bottom: 6px;
+  transition: background 0.1s;
 }
 .cpicker-upload-btn:hover {
-  border-color: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: var(--ai-accent);
 }
 
@@ -1448,8 +1465,8 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .layer-group-toggle:hover { opacity: 1; }
 
 .symbol-place-btn {
-  background: none;
-  border: 1px solid var(--ai-border-light);
+  background: var(--ai-btn);
+  border: none;
   color: var(--ai-text);
   border-radius: 3px;
   cursor: pointer;
@@ -1457,9 +1474,10 @@ input, select, button { font-family: inherit; font-size: 11px; }
   padding: 0 5px;
   margin-left: auto;
   line-height: 16px;
+  transition: background 0.1s;
 }
 .symbol-place-btn:hover {
-  background: var(--ai-accent);
+  background: var(--ai-btn-hover);
   color: #fff;
 }
 

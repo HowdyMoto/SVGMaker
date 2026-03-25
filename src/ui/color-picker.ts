@@ -101,13 +101,20 @@ function openPicker(state: AppState, target: 'fill' | 'stroke', anchor: HTMLElem
   currentOverlay = overlay;
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') { closePicker(); window.removeEventListener('keydown', onKey); }
+    if (e.key === 'Escape') closePicker();
   };
   window.addEventListener('keydown', onKey);
+  // Store cleanup ref so closePicker removes it
+  (overlay as any)._escCleanup = onKey;
 }
 
 function closePicker(): void {
-  if (currentOverlay) { currentOverlay.remove(); currentOverlay = null; }
+  if (currentOverlay) {
+    const cleanup = (currentOverlay as any)._escCleanup;
+    if (cleanup) window.removeEventListener('keydown', cleanup);
+    currentOverlay.remove();
+    currentOverlay = null;
+  }
 }
 
 // ---- Detect current paint mode ----

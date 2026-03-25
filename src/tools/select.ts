@@ -8,8 +8,7 @@ export class SelectTool extends BaseTool {
 
   // Drag-move state
   private dragging = false;
-  private dragStart: Point = { x: 0, y: 0 };
-  private dragOrigPositions: Map<string, { x: number; y: number }> = new Map();
+  private dragLastPt: Point = { x: 0, y: 0 };
 
   // Resize state
   private resizing = false;
@@ -23,6 +22,11 @@ export class SelectTool extends BaseTool {
   private rotateStartAngle = 0;
   private rotateOrigAngle = 0;
 
+  // Multi-transform state
+  private multiOrigTransforms: Map<string, string> = new Map();
+  private multiOrigBBoxes: Map<string, DOMRect> = new Map();
+  private multiCombinedBBox: DOMRect | null = null;
+
   // Marquee (rubber-band) selection state
   private marquee = false;
   private marqueeStart: Point = { x: 0, y: 0 };
@@ -32,26 +36,46 @@ export class SelectTool extends BaseTool {
     // --- Handle click on resize/rotate handle ---
     const handle = (e.target as SVGElement).getAttribute?.('data-handle');
     if (handle && this.state.selectedShapeId) {
-      const shape = this.state.getSelectedShape();
-      if (!shape) return;
+      const isMulti = this.state.selectedShapeIds.length > 1;
+      const shapes = this.getSelectedShapes();
+
+      // Snapshot original transforms for multi-transform operations
+      if (isMulti) {
+        this.multiOrigTransforms.clear();
+        this.multiOrigBBoxes.clear();
+        for (const s of shapes) {
+          this.multiOrigTransforms.set(s.id, s.element.getAttribute('transform') ?? '');
+          try {
+            this.multiOrigBBoxes.set(s.id, (s.element as unknown as SVGGraphicsElement).getBBox());
+          } catch { /* skip */ }
+        }
+        this.multiCombinedBBox = this.getScreenSpaceBBox(shapes);
+      }
 
       if (handle === 'rotate') {
         this.rotating = true;
-        const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
-        this.rotateCenter = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
-        this.rotateStartAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
-        this.rotateOrigAngle = shape.rotation ?? 0;
+        if (isMulti) {
+          const cb = this.multiCombinedBBox!;
+          this.rotateCenter = { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 };
+          this.rotateStartAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
+          this.rotateOrigAngle = 0;
+        } else {
+          const shape = shapes[0];
+          const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
+          this.rotateCenter = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+          this.rotateStartAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
+          this.rotateOrigAngle = shape.rotation ?? 0;
+        }
         return;
       }
 
       this.resizing = true;
       this.resizeHandle = handle;
       this.resizeStart = { ...pt };
-      // For multi-select, use combined bbox
-      if (this.state.selectedShapeIds.length > 1) {
-        this.resizeOrigBBox = this.getCombinedBBox(this.getSelectedShapes());
+      if (isMulti) {
+        this.resizeOrigBBox = this.multiCombinedBBox!;
       } else {
-        this.resizeOrigBBox = (shape.element as unknown as SVGGraphicsElement).getBBox();
+        this.resizeOrigBBox = (shapes[0].element as unknown as SVGGraphicsElement).getBBox();
       }
       return;
     }
@@ -73,16 +97,8 @@ export class SelectTool extends BaseTool {
         }
       }
 
-      // Start drag for all selected shapes
       this.dragging = true;
-      this.dragStart = { ...pt };
-      this.dragOrigPositions.clear();
-      for (const id of this.state.selectedShapeIds) {
-        const s = this.state.findShapeById(id);
-        if (s) {
-          this.dragOrigPositions.set(id, this.getElementPos(s.element));
-        }
-      }
+      this.dragLastPt = { ...pt };
     } else {
       // Clicked on empty space
       const isCanvas = target.id === 'canvas-bg' || target.id === 'canvas-grid' ||
@@ -114,46 +130,52 @@ export class SelectTool extends BaseTool {
 
     // --- Rotation ---
     if (this.rotating) {
-      const shape = this.state.getSelectedShape();
-      if (!shape) return;
       const currentAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
-      let newRotation = this.rotateOrigAngle + (currentAngle - this.rotateStartAngle);
-      // Shift snaps to 15-degree increments
+      let deltaAngle = currentAngle - this.rotateStartAngle;
       if (e.shiftKey) {
-        newRotation = Math.round(newRotation / 15) * 15;
+        deltaAngle = Math.round((this.rotateOrigAngle + deltaAngle) / 15) * 15 - this.rotateOrigAngle;
       }
-      newRotation = Math.round(newRotation * 10) / 10;
-      shape.rotation = newRotation;
-      this.applyRotation(shape);
+      deltaAngle = Math.round(deltaAngle * 10) / 10;
+
+      if (this.state.selectedShapeIds.length > 1) {
+        this.applyMultiRotation(deltaAngle);
+      } else {
+        const shape = this.state.getSelectedShape();
+        if (!shape) return;
+        shape.rotation = this.rotateOrigAngle + deltaAngle;
+        this.applyRotation(shape);
+      }
       this.state.onChange_public();
       return;
     }
 
     // --- Resize ---
     if (this.resizing && this.resizeOrigBBox) {
-      if (this.state.selectedShapeIds.length <= 1) {
+      const dx = pt.x - this.resizeStart.x;
+      const dy = pt.y - this.resizeStart.y;
+      if (this.state.selectedShapeIds.length > 1) {
+        this.applyMultiResize(dx, dy);
+      } else {
         const shape = this.state.getSelectedShape();
         if (!shape) return;
-        const dx = pt.x - this.resizeStart.x;
-        const dy = pt.y - this.resizeStart.y;
         this.applyResize(shape.element, shape.type, this.resizeOrigBBox, dx, dy, this.resizeHandle);
       }
       this.state.onChange_public();
       return;
     }
 
-    // --- Multi-drag ---
-    if (this.dragging && this.dragOrigPositions.size > 0) {
-      const dx = pt.x - this.dragStart.x;
-      const dy = pt.y - this.dragStart.y;
-      for (const id of this.state.selectedShapeIds) {
-        const s = this.state.findShapeById(id);
-        const orig = this.dragOrigPositions.get(id);
-        if (s && orig) {
-          this.moveElement(s.element, s.type, orig.x + dx, orig.y + dy);
+    // --- Drag move (incremental translate) ---
+    if (this.dragging) {
+      const dx = pt.x - this.dragLastPt.x;
+      const dy = pt.y - this.dragLastPt.y;
+      if (dx !== 0 || dy !== 0) {
+        for (const id of this.state.selectedShapeIds) {
+          const s = this.state.findShapeById(id);
+          if (s) this.translateElement(s.element, dx, dy);
         }
+        this.dragLastPt = { ...pt };
+        this.state.onChange_public();
       }
-      this.state.onChange_public();
     }
   }
 
@@ -172,7 +194,6 @@ export class SelectTool extends BaseTool {
       this.resizing = false;
       this.rotating = false;
       this.resizeOrigBBox = null;
-      this.dragOrigPositions.clear();
     }
     this.canvas.endPan();
   }
@@ -272,64 +293,16 @@ export class SelectTool extends BaseTool {
       .filter((s): s is ShapeData => s !== null);
   }
 
-  private getCombinedBBox(shapes: ShapeData[]): DOMRect {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const s of shapes) {
-      try {
-        const bbox = (s.element as unknown as SVGGraphicsElement).getBBox();
-        minX = Math.min(minX, bbox.x);
-        minY = Math.min(minY, bbox.y);
-        maxX = Math.max(maxX, bbox.x + bbox.width);
-        maxY = Math.max(maxY, bbox.y + bbox.height);
-      } catch { /* skip */ }
-    }
-    return new DOMRect(minX, minY, maxX - minX, maxY - minY);
-  }
 
   // ---- Position helpers ----
 
-  private getElementPos(el: SVGElement): { x: number; y: number } {
+  /** Move element by dx,dy in parent coordinate space. Works correctly for rotated elements. */
+  private translateElement(el: SVGElement, dx: number, dy: number): void {
     const tag = el.tagName.toLowerCase();
-    if (tag === 'g') {
-      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-      return { x: bbox.x, y: bbox.y };
-    }
-    if (tag === 'rect' || tag === 'text' || tag === 'image' || tag === 'use') {
-      return {
-        x: parseFloat(el.getAttribute('x') ?? '0'),
-        y: parseFloat(el.getAttribute('y') ?? '0'),
-      };
-    }
-    if (tag === 'ellipse') {
-      return {
-        x: parseFloat(el.getAttribute('cx') ?? '0'),
-        y: parseFloat(el.getAttribute('cy') ?? '0'),
-      };
-    }
-    if (tag === 'line') {
-      return {
-        x: parseFloat(el.getAttribute('x1') ?? '0'),
-        y: parseFloat(el.getAttribute('y1') ?? '0'),
-      };
-    }
-    if (tag === 'polyline' || tag === 'polygon') {
-      const points = el.getAttribute('points') ?? '';
-      const first = points.trim().split(/[\s,]+/);
-      return { x: parseFloat(first[0] ?? '0'), y: parseFloat(first[1] ?? '0') };
-    }
-    if (tag === 'path') {
-      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-      return { x: bbox.x, y: bbox.y };
-    }
-    return { x: 0, y: 0 };
-  }
+    const hasRotation = (el.getAttribute('transform') ?? '').includes('rotate(');
 
-  private moveElement(el: SVGElement, type: string, x: number, y: number): void {
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'g') {
-      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-      const dx = x - bbox.x;
-      const dy = y - bbox.y;
+    // For rotated elements (or groups/paths that already use transform), adjust translate in transform
+    if (hasRotation || tag === 'g' || tag === 'path') {
       const existing = el.getAttribute('transform') ?? '';
       const match = existing.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
       if (match) {
@@ -337,48 +310,155 @@ export class SelectTool extends BaseTool {
         const newTy = parseFloat(match[2]) + dy;
         el.setAttribute('transform', existing.replace(/translate\(([-\d.]+),\s*([-\d.]+)\)/, `translate(${newTx}, ${newTy})`));
       } else {
-        el.setAttribute('transform', (existing ? existing + ' ' : '') + `translate(${dx}, ${dy})`);
+        // Prepend translate before rotate so it applies in parent space
+        el.setAttribute('transform', `translate(${dx}, ${dy}) ${existing}`.trim());
       }
       return;
     }
-    if (tag === 'rect' || tag === 'image' || tag === 'use' || (tag === 'text' && type === 'text')) {
-      el.setAttribute('x', String(x));
-      el.setAttribute('y', String(y));
+
+    // For non-rotated elements, adjust position attributes directly (more precise)
+    if (tag === 'rect' || tag === 'text' || tag === 'image' || tag === 'use') {
+      el.setAttribute('x', String(parseFloat(el.getAttribute('x') ?? '0') + dx));
+      el.setAttribute('y', String(parseFloat(el.getAttribute('y') ?? '0') + dy));
     } else if (tag === 'ellipse') {
-      el.setAttribute('cx', String(x));
-      el.setAttribute('cy', String(y));
+      el.setAttribute('cx', String(parseFloat(el.getAttribute('cx') ?? '0') + dx));
+      el.setAttribute('cy', String(parseFloat(el.getAttribute('cy') ?? '0') + dy));
     } else if (tag === 'line') {
-      const x1 = parseFloat(el.getAttribute('x1') ?? '0');
-      const y1 = parseFloat(el.getAttribute('y1') ?? '0');
-      const x2 = parseFloat(el.getAttribute('x2') ?? '0');
-      const y2 = parseFloat(el.getAttribute('y2') ?? '0');
-      const dx = x - x1;
-      const dy = y - y1;
-      el.setAttribute('x1', String(x1 + dx));
-      el.setAttribute('y1', String(y1 + dy));
-      el.setAttribute('x2', String(x2 + dx));
-      el.setAttribute('y2', String(y2 + dy));
+      el.setAttribute('x1', String(parseFloat(el.getAttribute('x1') ?? '0') + dx));
+      el.setAttribute('y1', String(parseFloat(el.getAttribute('y1') ?? '0') + dy));
+      el.setAttribute('x2', String(parseFloat(el.getAttribute('x2') ?? '0') + dx));
+      el.setAttribute('y2', String(parseFloat(el.getAttribute('y2') ?? '0') + dy));
     } else if (tag === 'polyline' || tag === 'polygon') {
       const points = el.getAttribute('points') ?? '';
       const pairs = points.trim().split(/\s+/).map(p => p.split(',').map(Number));
-      if (pairs.length === 0) return;
-      const dx = x - pairs[0][0];
-      const dy = y - pairs[0][1];
       const newPoints = pairs.map(([px, py]) => `${px + dx},${py + dy}`).join(' ');
       el.setAttribute('points', newPoints);
-    } else if (tag === 'path') {
-      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-      const dx = x - bbox.x;
-      const dy = y - bbox.y;
-      const existing = el.getAttribute('transform') ?? '';
-      const match = existing.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
-      if (match) {
-        const newTx = parseFloat(match[1]) + dx;
-        const newTy = parseFloat(match[2]) + dy;
-        el.setAttribute('transform', `translate(${newTx}, ${newTy})`);
-      } else {
-        el.setAttribute('transform', `translate(${dx}, ${dy})`);
-      }
+    }
+  }
+
+
+  // ---- Screen-space bbox (accounts for transforms) ----
+
+  private getScreenSpaceBBox(shapes: ShapeData[]): DOMRect {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const svgEl = this.svgCanvas;
+    const drawingLayer = svgEl.querySelector('#drawing-layer') as SVGGraphicsElement | null;
+    const parentCtm = drawingLayer?.getCTM?.();
+
+    for (const s of shapes) {
+      const el = s.element as unknown as SVGGraphicsElement;
+      try {
+        const bbox = el.getBBox();
+        const ctm = el.getCTM();
+        if (ctm && parentCtm) {
+          const m = parentCtm.inverse().multiply(ctm);
+          for (const c of [
+            { x: bbox.x, y: bbox.y },
+            { x: bbox.x + bbox.width, y: bbox.y },
+            { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+            { x: bbox.x, y: bbox.y + bbox.height },
+          ]) {
+            const pt = svgEl.createSVGPoint();
+            pt.x = c.x; pt.y = c.y;
+            const t = pt.matrixTransform(m);
+            minX = Math.min(minX, t.x);
+            minY = Math.min(minY, t.y);
+            maxX = Math.max(maxX, t.x);
+            maxY = Math.max(maxY, t.y);
+          }
+        } else {
+          minX = Math.min(minX, bbox.x);
+          minY = Math.min(minY, bbox.y);
+          maxX = Math.max(maxX, bbox.x + bbox.width);
+          maxY = Math.max(maxY, bbox.y + bbox.height);
+        }
+      } catch { /* skip */ }
+    }
+    return new DOMRect(minX, minY, maxX - minX, maxY - minY);
+  }
+
+  // ---- Multi-transform operations ----
+
+  private applyMultiRotation(deltaAngle: number): void {
+    const cx = this.rotateCenter.x;
+    const cy = this.rotateCenter.y;
+    const rad = deltaAngle * Math.PI / 180;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+
+    for (const s of this.getSelectedShapes()) {
+      const origTransform = this.multiOrigTransforms.get(s.id) ?? '';
+      const origBBox = this.multiOrigBBoxes.get(s.id);
+      if (!origBBox) continue;
+
+      // Element center in local space
+      const ex = origBBox.x + origBBox.width / 2;
+      const ey = origBBox.y + origBBox.height / 2;
+
+      // Rotate element center around the group center
+      const dx = ex - cx;
+      const dy = ey - cy;
+      const newCx = cx + dx * cosA - dy * sinA;
+      const newCy = cy + dx * sinA + dy * cosA;
+      const tx = newCx - ex;
+      const ty = newCy - ey;
+
+      // Build new transform: translate to new position + rotate by delta + original transform
+      let newTransform = '';
+      if (tx !== 0 || ty !== 0) newTransform += `translate(${tx}, ${ty}) `;
+      newTransform += `rotate(${deltaAngle}, ${ex}, ${ey})`;
+      if (origTransform) newTransform += ` ${origTransform}`;
+
+      s.element.setAttribute('transform', newTransform.trim());
+
+      // Update shape rotation tracking
+      const origRotMatch = origTransform.match(/rotate\(([-\d.]+)/);
+      const origRot = origRotMatch ? parseFloat(origRotMatch[1]) : 0;
+      s.rotation = origRot + deltaAngle;
+    }
+  }
+
+  private applyMultiResize(dx: number, dy: number): void {
+    const orig = this.resizeOrigBBox;
+    if (!orig || orig.width === 0 || orig.height === 0) return;
+
+    // Compute new combined bbox from handle drag
+    let newX = orig.x, newY = orig.y, newW = orig.width, newH = orig.height;
+    const handle = this.resizeHandle;
+    if (handle.includes('e')) newW += dx;
+    if (handle.includes('w')) { newX += dx; newW -= dx; }
+    if (handle.includes('s')) newH += dy;
+    if (handle.includes('n')) { newY += dy; newH -= dy; }
+    if (newW < 1) newW = 1;
+    if (newH < 1) newH = 1;
+
+    const sx = newW / orig.width;
+    const sy = newH / orig.height;
+
+    // Anchor point (opposite corner of the handle)
+    const ax = handle.includes('w') ? orig.x + orig.width : orig.x;
+    const ay = handle.includes('n') ? orig.y + orig.height : orig.y;
+
+    for (const s of this.getSelectedShapes()) {
+      const origTransform = this.multiOrigTransforms.get(s.id) ?? '';
+      const origBBox = this.multiOrigBBoxes.get(s.id);
+      if (!origBBox) continue;
+
+      const ex = origBBox.x + origBBox.width / 2;
+      const ey = origBBox.y + origBBox.height / 2;
+
+      // Scale position relative to anchor
+      const scaledCx = ax + (ex - ax) * sx;
+      const scaledCy = ay + (ey - ay) * sy;
+      const tx = scaledCx - ex;
+      const ty = scaledCy - ey;
+
+      let newTransform = '';
+      if (tx !== 0 || ty !== 0) newTransform += `translate(${tx}, ${ty}) `;
+      newTransform += `scale(${sx}, ${sy})`;
+      if (origTransform) newTransform += ` ${origTransform}`;
+
+      s.element.setAttribute('transform', newTransform.trim());
     }
   }
 

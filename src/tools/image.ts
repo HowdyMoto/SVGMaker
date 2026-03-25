@@ -38,11 +38,13 @@ export class ImageTool extends BaseTool {
     input.style.display = 'none';
     document.body.appendChild(input);
 
+    const cleanup = () => input.remove();
     input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (file) this.loadImageFile(file);
-      input.remove();
+      cleanup();
     });
+    input.addEventListener('cancel', cleanup);
 
     input.click();
   }

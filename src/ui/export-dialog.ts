@@ -166,8 +166,7 @@ async function exportArtboards(
   scale: number,
 ): Promise<void> {
   const drawingSvg = state.getDrawingLayerSVG();
-  const defsContent = state.getDefsContent();
-  const defsBlock = defsContent ? `<defs>${defsContent}</defs>\n  ` : '';
+  const defsBlock = state.getDefsBlock();
 
   for (const ab of artboards) {
     const fileName = sanitizeFilename(ab.name);

@@ -3,7 +3,9 @@ import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef
 export class AppState {
   currentTool: ToolName = 'select';
   shapes: ShapeData[] = [];
-  selectedShapeId: string | null = null;
+  get selectedShapeId(): string | null {
+    return this.selectedShapeIds.length > 0 ? this.selectedShapeIds[this.selectedShapeIds.length - 1] : null;
+  }
   private idCounter = 0;
   private abCounter = 0;
   private history: HistoryEntry[] = [];
@@ -135,7 +137,7 @@ export class AppState {
   addShape(shape: ShapeData): void {
     this.shapes.push(shape);
     this.drawingLayer.appendChild(shape.element);
-    this.selectedShapeId = shape.id;
+    this.selectedShapeIds = [shape.id];
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -146,9 +148,7 @@ export class AppState {
     const shape = this.shapes[idx];
     shape.element.remove();
     this.shapes.splice(idx, 1);
-    if (this.selectedShapeId === id) {
-      this.selectedShapeId = null;
-    }
+    this.selectedShapeIds = this.selectedShapeIds.filter(sid => sid !== id);
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -159,7 +159,6 @@ export class AppState {
   }
 
   selectShape(id: string | null): void {
-    this.selectedShapeId = id;
     this.selectedShapeIds = id ? [id] : [];
     this.onChangeCallback();
   }
@@ -278,7 +277,7 @@ export class AppState {
 
     // For 'use' type, fix up the id but keep href
     if (this.clipboard.type === 'group') {
-      // Re-id all children inside the group
+  
       this.reIdGroupChildren(newEl);
     }
 
@@ -306,7 +305,7 @@ export class AppState {
       const svgEl = doc.querySelector('svg');
       if (!svgEl) return false;
 
-      // Import each child element
+
       let pasted = false;
       for (let i = 0; i < svgEl.children.length; i++) {
         const child = svgEl.children[i];
@@ -410,7 +409,7 @@ export class AppState {
   private restoreHistory(entry: HistoryEntry): void {
     this.drawingLayer.innerHTML = entry.svgContent;
     this.rebuildShapesFromDOM();
-    this.selectedShapeId = entry.selectedId;
+    this.selectedShapeIds = entry.selectedId ? [entry.selectedId] : [];
     try {
       this.artboards = JSON.parse(entry.artboardsJson);
       // Restore abCounter
@@ -529,7 +528,6 @@ export class AppState {
 
   selectMultiple(ids: string[]): void {
     this.selectedShapeIds = ids;
-    this.selectedShapeId = ids.length > 0 ? ids[ids.length - 1] : null;
     this.onChangeCallback();
   }
 
@@ -540,9 +538,6 @@ export class AppState {
     } else {
       this.selectedShapeIds.push(id);
     }
-    this.selectedShapeId = this.selectedShapeIds.length > 0
-      ? this.selectedShapeIds[this.selectedShapeIds.length - 1]
-      : null;
     this.onChangeCallback();
   }
 
@@ -565,13 +560,13 @@ export class AppState {
 
     if (ids.length < 2) return;
 
-    // Get shapes to group (in their current order)
+    const idSet = new Set(ids);
     const toGroup: ShapeData[] = [];
     const remaining: ShapeData[] = [];
     let insertIdx = -1;
 
     for (let i = 0; i < this.shapes.length; i++) {
-      if (ids.includes(this.shapes[i].id)) {
+      if (idSet.has(this.shapes[i].id)) {
         if (insertIdx === -1) insertIdx = remaining.length;
         toGroup.push(this.shapes[i]);
       } else {
@@ -581,7 +576,7 @@ export class AppState {
 
     if (toGroup.length < 2) return;
 
-    // Create SVG <g> element
+
     const gEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const groupId = this.nextId();
     gEl.id = groupId;
@@ -616,7 +611,6 @@ export class AppState {
     remaining.splice(insertIdx, 0, groupShape);
     this.shapes = remaining;
     this.selectedShapeIds = [groupId];
-    this.selectedShapeId = groupId;
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -647,7 +641,6 @@ export class AppState {
     // Replace group in shapes array with its children
     this.shapes.splice(idx, 1, ...children);
     this.selectedShapeIds = children.map(c => c.id);
-    this.selectedShapeId = children.length > 0 ? children[children.length - 1].id : null;
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -683,7 +676,7 @@ export class AppState {
     const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
     symbolEl.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
 
-    // Clone the shape element into the symbol
+
     const clone = shape.element.cloneNode(true) as SVGElement;
     clone.removeAttribute('id');
     symbolEl.appendChild(clone);
@@ -693,7 +686,7 @@ export class AppState {
     const symbolDef: SymbolDef = { id: symId, name: symName, element: symbolEl as unknown as SVGSymbolElement };
     this.symbols.push(symbolDef);
 
-    // Replace the original shape with a <use> element
+
     const useEl = document.createElementNS('http://www.w3.org/2000/svg', 'use');
     const useId = this.nextId();
     useEl.id = useId;
@@ -719,7 +712,6 @@ export class AppState {
       symbolId: symId,
     };
 
-    this.selectedShapeId = useId;
     this.selectedShapeIds = [useId];
     this.saveHistory();
     this.onChangeCallback();
@@ -805,7 +797,6 @@ export class AppState {
       visible: true, locked: false,
     };
 
-    this.selectedShapeId = newId;
     this.selectedShapeIds = [newId];
     this.saveHistory();
     this.onChangeCallback();
@@ -952,13 +943,15 @@ export class AppState {
       img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
       el.appendChild(img);
     } else if (pat.type === 'preset') {
-      this.buildPresetPatternContent(el, pat, tw, th);
+      this.buildPresetPatternContent(el, pat);
     }
 
     defs.appendChild(el);
   }
 
-  private buildPresetPatternContent(el: SVGPatternElement, pat: PatternDef, tw: number, th: number): void {
+  private buildPresetPatternContent(el: SVGPatternElement, pat: PatternDef): void {
+    const tw = pat.tileWidth * pat.scale + pat.spacing;
+    const th = pat.tileHeight * pat.scale + pat.spacing;
     const NS = 'http://www.w3.org/2000/svg';
     const color = pat.presetColor ?? '#000000';
     const s = pat.scale;
@@ -1025,6 +1018,11 @@ export class AppState {
     return parts.join('\n');
   }
 
+  getDefsBlock(): string {
+    const content = this.getDefsContent();
+    return content ? `<defs>${content}</defs>\n` : '';
+  }
+
   getDrawingLayerSVG(): string {
     return this.drawingLayer.innerHTML;
   }
@@ -1032,7 +1030,7 @@ export class AppState {
   clearAll(): void {
     this.drawingLayer.innerHTML = '';
     this.shapes = [];
-    this.selectedShapeId = null;
+    this.selectedShapeIds = [];
     this.artboards = [{
       id: this.nextArtboardId(),
       x: 0, y: 0, width: 960, height: 540, name: 'Artboard 1',
@@ -1159,7 +1157,7 @@ export class AppState {
       return imported;
     };
     this.shapes = importElements(svgEl, this.drawingLayer);
-    this.selectedShapeId = null;
+    this.selectedShapeIds = [];
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -1168,6 +1166,6 @@ export class AppState {
   importSVGMarkup(svgMarkup: string): void {
     this.drawingLayer.innerHTML = svgMarkup;
     this.rebuildShapesFromDOM();
-    this.selectedShapeId = null;
+    this.selectedShapeIds = [];
   }
 }
