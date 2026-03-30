@@ -404,6 +404,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-bottom: 1px solid var(--ai-border);
   display: block;
   width: 100%;
+  height: var(--ruler-size);
 }
 
 #ruler-v {
@@ -412,6 +413,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   background: var(--ai-panel);
   border-right: 1px solid var(--ai-border);
   display: block;
+  width: var(--ruler-size);
   height: 100%;
 }
 
