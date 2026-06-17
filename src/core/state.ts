@@ -330,6 +330,107 @@ export class AppState {
     }
   }
 
+  /**
+   * Drag-and-drop reorder/reparent from the Layers panel.
+   *
+   * The Layers panel lists shapes top-to-bottom in REVERSE paint order (top of
+   * the list = top of the z-stack = last in the DOM). `position` is expressed
+   * in that visual order: 'before' = above the target in the panel (so later in
+   * the DOM), 'after' = below it, 'inside' = into the target group.
+   *
+   * We mutate the live DOM then rebuild the model from it, so the two never
+   * drift. When the parent changes, the element's transform is recomputed so it
+   * keeps its on-screen position (no jump when dropping into a moved group).
+   */
+  moveShape(draggedId: string, targetId: string, position: 'before' | 'after' | 'inside'): boolean {
+    if (draggedId === targetId) return false;
+    const dragged = this.findShapeById(draggedId);
+    const target = this.findShapeById(targetId);
+    if (!dragged || !target) return false;
+
+    const dEl = dragged.element;
+    const tEl = target.element;
+    // Never drop a group into its own subtree.
+    if (dEl === tEl || dEl.contains(tEl)) return false;
+
+    const oldParent = dEl.parentNode;
+    const oldScreen = (dEl as unknown as SVGGraphicsElement).getScreenCTM();
+
+    if (position === 'inside') {
+      if (target.type !== 'group') return false;
+      tEl.appendChild(dEl); // top of the group's stack
+    } else {
+      const parent = tEl.parentNode;
+      if (!parent) return false;
+      // Panel order is reversed vs. the DOM, so 'before' goes after the target.
+      parent.insertBefore(dEl, position === 'before' ? tEl.nextSibling : tEl);
+    }
+
+    // Preserve on-screen position when the parent changed (reparent).
+    const newParent = dEl.parentNode;
+    if (newParent !== oldParent && oldScreen) {
+      const pScreen = (newParent as unknown as SVGGraphicsElement).getScreenCTM?.();
+      if (pScreen) {
+        const m = pScreen.inverse().multiply(oldScreen);
+        const r = (v: number) => Math.round(v * 1e6) / 1e6;
+        dEl.setAttribute('transform', `matrix(${r(m.a)} ${r(m.b)} ${r(m.c)} ${r(m.d)} ${r(m.e)} ${r(m.f)})`);
+      }
+    }
+
+    this.rebuildShapesFromDOM();
+    this.selectedShapeIds = [draggedId];
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
+  /**
+   * Wrap `targetId` and `draggedId` in a NEW group, created at the target's
+   * position/parent. Used when dragging one layer directly onto another (the
+   * middle of a non-group row). The dragged element keeps its on-screen
+   * position; the target does too (the new group is identity and sits where
+   * the target was).
+   */
+  groupShapes(draggedId: string, targetId: string): boolean {
+    if (draggedId === targetId) return false;
+    const dragged = this.findShapeById(draggedId);
+    const target = this.findShapeById(targetId);
+    if (!dragged || !target) return false;
+
+    const dEl = dragged.element;
+    const tEl = target.element;
+    if (dEl === tEl || dEl.contains(tEl) || tEl.contains(dEl)) return false;
+    const parent = tEl.parentNode;
+    if (!parent) return false;
+
+    const dOldParent = dEl.parentNode;
+    const dOldScreen = (dEl as unknown as SVGGraphicsElement).getScreenCTM();
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const id = this.nextId();
+    g.id = id;
+    g.setAttribute('data-name', `Group ${id.replace('shape-', '#')}`);
+    parent.insertBefore(g, tEl); // take the target's slot in the stack
+    g.appendChild(tEl);          // target on the bottom
+    g.appendChild(dEl);          // dragged on top
+
+    // The dragged element's parent changed — compensate so it doesn't jump.
+    if (dOldParent !== g && dOldScreen) {
+      const pScreen = (g as unknown as SVGGraphicsElement).getScreenCTM?.();
+      if (pScreen) {
+        const m = pScreen.inverse().multiply(dOldScreen);
+        const r = (v: number) => Math.round(v * 1e6) / 1e6;
+        dEl.setAttribute('transform', `matrix(${r(m.a)} ${r(m.b)} ${r(m.c)} ${r(m.d)} ${r(m.e)} ${r(m.f)})`);
+      }
+    }
+
+    this.rebuildShapesFromDOM();
+    this.selectedShapeIds = [id];
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
   /** Re-append top-level shape elements so DOM paint order matches `this.shapes`. */
   private syncDomOrder(): void {
     for (const s of this.shapes) this.drawingLayer.appendChild(s.element);

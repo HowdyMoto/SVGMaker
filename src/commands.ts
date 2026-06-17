@@ -72,8 +72,8 @@ export const COMMANDS: Command[] = [
   { id: 'file.open', label: 'Open…', kind: 'action', accel: 'Mod+O', run: (c) => openProject(c.state) },
   { id: 'file.save', label: 'Save', kind: 'action', accel: 'Mod+S', run: (c) => saveProject(c.state) },
   { id: 'file.save-as', label: 'Save As…', kind: 'action', run: (c) => saveProjectAs(c.state) },
-  { id: 'file.import-svg', label: 'Import SVG…', kind: 'action', run: (c) => importSVG(c.state) },
-  { id: 'file.import-image', label: 'Import Image…', kind: 'action', run: (c) => pickAndImportImage(c.state) },
+  { id: 'file.import-svg', label: 'Append SVG…', kind: 'action', run: (c) => importSVG(c.state) },
+  { id: 'file.import-image', label: 'Append Image…', kind: 'action', run: (c) => pickAndImportImage(c.state) },
   {
     id: 'file.export-svg', label: 'Export Active Artboard…', kind: 'action',
     accel: ['Mod+Shift+S', 'Mod+E'], run: (c) => { void exportSVG(c.state); },

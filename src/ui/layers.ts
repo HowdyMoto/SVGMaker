@@ -4,6 +4,30 @@ import type { CommandContext } from '../commands';
 import { runCommand } from '../commands';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
 
+// Id of the row currently being dragged in the Layers panel (null when idle).
+let draggedId: string | null = null;
+
+// 'inside' = into an existing group; 'onto' = wrap target + dragged in a new group.
+type DropZone = 'before' | 'after' | 'inside' | 'onto';
+
+/** Where a drop lands within a row: above/below, or onto the row to combine. */
+function dropZone(e: DragEvent, li: HTMLElement, targetIsGroup: boolean): DropZone {
+  const r = li.getBoundingClientRect();
+  const y = e.clientY - r.top;
+  if (y < r.height / 3) return 'before';
+  if (y > (r.height * 2) / 3) return 'after';
+  return targetIsGroup ? 'inside' : 'onto';
+}
+
+/** Both 'inside' and 'onto' highlight the whole row. */
+function dropMark(zone: DropZone): string {
+  return zone === 'before' || zone === 'after' ? `drop-${zone}` : 'drop-inside';
+}
+
+function clearDropMarks(li: HTMLElement): void {
+  li.classList.remove('drop-before', 'drop-after', 'drop-inside');
+}
+
 export function updateLayersPanel(state: AppState): void {
   const list = document.getElementById('layers-list')!;
   list.innerHTML = '';
@@ -139,6 +163,41 @@ export function updateLayersPanel(state: AppState): void {
           { label: 'Rename', action: () => renameShape(shape.id) },
           { label: 'Delete', danger: true, action: () => state.removeShape(shape.id) },
         ]);
+      });
+
+      // Drag to reorder / reparent.
+      li.draggable = true;
+      li.addEventListener('dragstart', (e) => {
+        draggedId = shape.id;
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', shape.id);
+        li.classList.add('dragging');
+      });
+      li.addEventListener('dragend', () => {
+        draggedId = null;
+        list.querySelectorAll('.layer-item').forEach(el => {
+          el.classList.remove('dragging');
+          clearDropMarks(el as HTMLElement);
+        });
+      });
+      li.addEventListener('dragover', (e) => {
+        if (!draggedId || draggedId === shape.id) return;
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        const zone = dropZone(e, li, shape.type === 'group');
+        clearDropMarks(li);
+        li.classList.add(dropMark(zone));
+      });
+      li.addEventListener('dragleave', () => clearDropMarks(li));
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const zone = dropZone(e, li, shape.type === 'group');
+        clearDropMarks(li);
+        if (draggedId && draggedId !== shape.id) {
+          if (zone === 'onto') state.groupShapes(draggedId, shape.id);
+          else state.moveShape(draggedId, shape.id, zone);
+        }
+        draggedId = null;
       });
 
       list.appendChild(li);
