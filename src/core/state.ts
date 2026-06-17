@@ -264,7 +264,7 @@ export class AppState {
   }
 
   toggleVisibility(id: string): void {
-    const shape = this.shapes.find(s => s.id === id);
+    const shape = this.findShapeById(id);
     if (!shape) return;
     shape.visible = !shape.visible;
     (shape.element as SVGElement).style.display = shape.visible ? '' : 'none';
@@ -273,7 +273,7 @@ export class AppState {
   }
 
   toggleLock(id: string): void {
-    const shape = this.shapes.find(s => s.id === id);
+    const shape = this.findShapeById(id);
     if (!shape) return;
     shape.locked = !shape.locked;
     // Mirror onto the element so the lock survives history (which snapshots the
