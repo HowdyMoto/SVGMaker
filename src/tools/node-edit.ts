@@ -17,6 +17,14 @@ export class NodeEditTool extends BaseTool {
   private dragLast: Point = { x: 0, y: 0 };
   private dirty = false;
 
+  // Rubber-band node selection (coords in svg-user / viewBox space).
+  private marquee = false;
+  private marqueeStart: Point = { x: 0, y: 0 };
+  private marqueeMoved = false;
+  private marqueeAdditive = false;
+  private marqueeFromEmpty = false;
+  private marqueeRect: SVGRectElement | null = null;
+
   activate(): void {
     // If a single path is already selected, jump straight into editing it.
     const sel = this.state.getSelectedShape();
@@ -64,29 +72,44 @@ export class NodeEditTool extends BaseTool {
       return;
     }
 
-    // 3) Clicked elsewhere.
+    // 3) Clicked a DIFFERENT shape: switch to editing/selecting it.
     const el = this.findShapeElement(e.target as SVGElement);
-    if (el && el.id === this.state.editingPathId) {
-      // On the editing path's body but not a node: clear node selection.
-      session.clearSelection();
-      this.state.onChange_public();
+    if (el && el.id !== this.state.editingPathId) {
+      const shape = this.state.findShapeById(el.id);
+      if (shape && shape.type === 'path') {
+        this.state.enterPathEdit(shape.id);
+      } else if (shape) {
+        this.state.exitPathEdit();
+        this.state.selectShape(shape.id);
+      }
       return;
     }
-    const shape = el ? this.state.findShapeById(el.id) : null;
-    if (shape && shape.type === 'path') {
-      this.state.enterPathEdit(shape.id);
-    } else if (shape) {
-      this.state.exitPathEdit();
-      this.state.selectShape(shape.id);
-    } else {
-      this.state.exitPathEdit();
-      this.state.selectShape(null);
-    }
+
+    // 4) On the editing path's body or empty space: begin a rubber-band select.
+    // A drag selects the enclosed nodes; a plain click (no drag) clears the
+    // node selection — or, from empty space, exits the path (handled on mouseup).
+    this.marquee = true;
+    this.marqueeStart = { ...pt };
+    this.marqueeMoved = false;
+    this.marqueeAdditive = e.shiftKey;
+    this.marqueeFromEmpty = !el;
   }
 
   onMouseMove(pt: Point, e: MouseEvent): void {
     const session = this.state.pathEdit;
     if (!session) return;
+
+    if (this.marquee) {
+      const t = 3 / this.canvas.getZoom(); // ~3px drag threshold before it counts
+      if (!this.marqueeMoved &&
+          (Math.abs(pt.x - this.marqueeStart.x) > t || Math.abs(pt.y - this.marqueeStart.y) > t)) {
+        this.marqueeMoved = true;
+        this.createMarqueeRect();
+      }
+      if (this.marqueeMoved) this.updateMarqueeRect(pt);
+      return;
+    }
+
     const local = this.toLocal(pt);
 
     if (this.dragHandle) {
@@ -106,7 +129,16 @@ export class NodeEditTool extends BaseTool {
     }
   }
 
-  onMouseUp(_pt: Point, _e: MouseEvent): void {
+  onMouseUp(pt: Point, _e: MouseEvent): void {
+    if (this.marquee) {
+      const moved = this.marqueeMoved;
+      this.removeMarqueeRect();
+      this.marquee = false;
+      this.marqueeMoved = false;
+      if (moved) this.selectNodesInRect(pt);
+      else this.handleMarqueeClick();
+      return;
+    }
     if (this.dirty) this.state.commitPathEdit();
     this.resetDrag();
   }
@@ -138,6 +170,75 @@ export class NodeEditTool extends BaseTool {
     this.dragHandle = null;
     this.dragAlt = false;
     this.dirty = false;
+    this.marquee = false;
+    this.marqueeMoved = false;
+    this.removeMarqueeRect();
+  }
+
+  // ---- node marquee selection ----
+
+  /** A click (no drag): clear the node selection, or exit if from empty space. */
+  private handleMarqueeClick(): void {
+    const session = this.state.pathEdit;
+    if (!session) return;
+    if (this.marqueeFromEmpty) {
+      this.state.exitPathEdit();
+      this.state.selectShape(null);
+    } else {
+      session.clearSelection();
+      this.state.onChange_public();
+    }
+  }
+
+  /** Select every anchor whose point falls inside the dragged rectangle. */
+  private selectNodesInRect(end: Point): void {
+    const session = this.state.pathEdit;
+    if (!session) return;
+    const a = this.toLocal(this.marqueeStart);
+    const b = this.toLocal(end);
+    const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+    if (!this.marqueeAdditive) session.clearSelection();
+    session.model.subpaths.forEach((sp, spi) => {
+      sp.anchors.forEach((an, i) => {
+        if (an.x >= minX && an.x <= maxX && an.y >= minY && an.y <= maxY) session.addSelect(spi, i);
+      });
+    });
+    this.state.onChange_public();
+  }
+
+  private selectionLayer(): SVGGElement | null {
+    return this.svgCanvas.querySelector('#selection-layer');
+  }
+
+  private createMarqueeRect(): void {
+    const layer = this.selectionLayer();
+    if (!layer) return;
+    const rect = document.createElementNS(this.NS, 'rect') as SVGRectElement;
+    rect.id = 'marquee-rect';
+    rect.setAttribute('fill', 'rgba(32, 160, 255, 0.08)');
+    rect.setAttribute('stroke', '#20a0ff');
+    rect.setAttribute('stroke-width', '1');
+    rect.setAttribute('vector-effect', 'non-scaling-stroke');
+    rect.setAttribute('stroke-dasharray', '4,3');
+    rect.setAttribute('pointer-events', 'none');
+    layer.appendChild(rect);
+    this.marqueeRect = rect;
+  }
+
+  private updateMarqueeRect(pt: Point): void {
+    if (!this.marqueeRect) return;
+    const x = Math.min(pt.x, this.marqueeStart.x);
+    const y = Math.min(pt.y, this.marqueeStart.y);
+    this.marqueeRect.setAttribute('x', String(x));
+    this.marqueeRect.setAttribute('y', String(y));
+    this.marqueeRect.setAttribute('width', String(Math.abs(pt.x - this.marqueeStart.x)));
+    this.marqueeRect.setAttribute('height', String(Math.abs(pt.y - this.marqueeStart.y)));
+  }
+
+  private removeMarqueeRect(): void {
+    this.marqueeRect?.remove();
+    this.marqueeRect = null;
   }
 
   private editingElement(): SVGElement | null {

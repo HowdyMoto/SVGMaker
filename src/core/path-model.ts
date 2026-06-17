@@ -36,9 +36,8 @@ const ARG_COUNT: Record<string, number> = {
 
 /** Coincidence tolerance (user units) for merging closed-loop endpoints. */
 const MERGE_EPS = 0.5;
-/** Collinearity / equal-length tolerances for smooth-vs-broken inference. */
+/** Collinearity tolerance for smooth-vs-broken inference. */
 const COLLINEAR_EPS = 0.08;
-const LENGTH_EPS = 0.5;
 
 export interface PathToken { cmd: string; args: number[] }
 
@@ -79,8 +78,11 @@ export function inferType(a: Anchor): AnchorType {
     const lenIn = Math.hypot(inDx, inDy), lenOut = Math.hypot(outDx, outDy);
     const cross = inDx * outDy - inDy * outDx;
     const dot = inDx * outDx + inDy * outDy;
+    // Collinear handles on opposite sides = smooth, regardless of handle length.
+    // (Requiring equal length made a tangent point revert to "broken" the moment
+    // a handle was dragged to a different length, losing its smoothness.)
     const collinear = Math.abs(cross) <= COLLINEAR_EPS * (lenIn * lenOut + 1e-6) && dot > 0;
-    if (collinear && Math.abs(lenIn - lenOut) <= LENGTH_EPS) return 'smooth';
+    if (collinear) return 'smooth';
     return 'broken';
   }
   return 'broken'; // single handle (e.g. an open-path endpoint)
