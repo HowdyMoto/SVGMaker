@@ -26,7 +26,32 @@ function paintPreviewBg(value: string, state: AppState): string {
   return value;
 }
 
+/** Show the Point-type row while node-editing and reflect the selection's type. */
+function updateNodeRow(state: AppState): void {
+  const row = document.getElementById('prop-node-row') as HTMLElement | null;
+  if (!row) return;
+  const session = state.pathEdit;
+  const active = !!(state.editingPathId && session && session.selected.size > 0);
+  row.style.display = active ? '' : 'none';
+  if (!active) return;
+  const type = session!.selectionType();
+  (document.getElementById('prop-node-corner') as HTMLButtonElement).classList.toggle('active', type === 'corner');
+  (document.getElementById('prop-node-smooth') as HTMLButtonElement).classList.toggle('active', type === 'smooth');
+  (document.getElementById('prop-node-broken') as HTMLButtonElement).classList.toggle('active', type === 'broken');
+}
+
 export function setupProperties(state: AppState): void {
+  // Node point-type buttons (visible only while node-editing a path).
+  for (const [id, type] of [
+    ['prop-node-corner', 'corner'], ['prop-node-smooth', 'smooth'], ['prop-node-broken', 'broken'],
+  ] as const) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (!state.pathEdit || state.pathEdit.selected.size === 0) return;
+      state.pathEdit.setSelectedType(type);
+      state.commitPathEdit();
+    });
+  }
+
   const fillNoneBtn = document.getElementById('prop-fill-none') as HTMLButtonElement;
   const strokeNoneBtn = document.getElementById('prop-stroke-none') as HTMLButtonElement;
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
@@ -367,6 +392,7 @@ export function updatePropertiesPanel(state: AppState): void {
     opacityVal.textContent = `${Math.round(ds.opacity * 100)}%`;
     propRx.value = String(ds.rx ?? 0);
     rxRow.style.display = 'none';
+    updateNodeRow(state);
     typePanel.style.display = 'none';
     propX.value = '0'; propY.value = '0'; propW.value = '0'; propH.value = '0';
     propRotation.value = '0';
@@ -401,6 +427,7 @@ export function updatePropertiesPanel(state: AppState): void {
   opacityVal.textContent = `${Math.round(s.opacity * 100)}%`;
   propRx.value = String(s.rx ?? 0);
   rxRow.style.display = shape.type === 'rect' ? '' : 'none';
+  updateNodeRow(state);
   strokeWeight.value = String(s.strokeWidth);
   strokeDash.value = s.strokeDasharray ?? '';
 

@@ -2,6 +2,7 @@ import './style.css';
 import { AppState } from './core/state';
 import { CanvasController } from './core/canvas';
 import { SelectTool } from './tools/select';
+import { NodeEditTool } from './tools/node-edit';
 import { RectTool } from './tools/rect';
 import { RoundedRectTool } from './tools/rounded-rect';
 import { EllipseTool } from './tools/ellipse';
@@ -17,6 +18,7 @@ import { PolygonShapeTool } from './tools/polygon-tool';
 import { ArtboardTool } from './tools/artboard-tool';
 import { ImageTool } from './tools/image';
 import { updateSelectionOverlay } from './ui/selection-overlay';
+import { renderNodeOverlay } from './ui/node-overlay';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { exportSVG } from './ui/export';
@@ -25,10 +27,11 @@ import { drawRulers } from './ui/rulers';
 import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
 import { renderArtboards } from './ui/artboard-renderer';
-import { updateArtboardsPanel, setupArtboardButtons } from './ui/artboards-panel';
+import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { showExportDialog } from './ui/export-dialog';
-import { saveProject, openProject } from './ui/project-file';
+import { saveProject, openProject, openHandle, openTextWithoutHandle } from './ui/project-file';
+import { setupRecentFilesMenu } from './ui/recent-files';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
 
@@ -36,6 +39,7 @@ import type { ToolName } from './core/types';
 const svgCanvas = document.getElementById('svg-canvas') as unknown as SVGSVGElement;
 const drawingLayer = document.getElementById('drawing-layer') as unknown as SVGGElement;
 const selectionLayer = document.getElementById('selection-layer') as unknown as SVGGElement;
+const guidesLayer = document.getElementById('guides-layer') as unknown as SVGGElement;
 
 // State & canvas
 const state = new AppState(drawingLayer, onStateChange);
@@ -64,7 +68,7 @@ const toolLabels: Record<ToolName, string> = {
 // Tools
 const tools: Record<ToolName, Tool> = {
   select: new SelectTool(state, canvas, svgCanvas),
-  directSelect: new SelectTool(state, canvas, svgCanvas),
+  directSelect: new NodeEditTool(state, canvas, svgCanvas),
   rect: new RectTool(state, canvas, svgCanvas),
   roundedRect: new RoundedRectTool(state, canvas, svgCanvas),
   ellipse: new EllipseTool(state, canvas, svgCanvas),
@@ -98,6 +102,7 @@ function getArtboardsBounds(): { x: number; y: number; w: number; h: number } {
 function onStateChange(): void {
   renderArtboards(state, svgCanvas);
   updateSelectionOverlay(state, selectionLayer);
+  renderNodeOverlay(state, guidesLayer);
   updatePropertiesPanel(state);
   updateLayersPanel(state);
   updateArtboardsPanel(state);
@@ -128,6 +133,8 @@ svgCanvas.addEventListener('mousedown', (e: MouseEvent) => {
     return;
   }
   if (e.button !== 0) return;
+  // Interacting with the canvas makes the Layers list the delete target.
+  if (state.currentTool !== 'artboard') state.activePanel = 'layers';
   isMouseDown = true;
   const pt = canvas.screenToSVG(e.clientX, e.clientY);
   activeTool.onMouseDown(pt, e);
@@ -219,7 +226,16 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     case 'i': case 'I': setTool('eyedropper'); break;
     case '\\': setTool('line'); break;
     case 'Delete': case 'Backspace':
-      if (state.selectedShapeIds.length > 1) {
+      // While node-editing with anchors selected, delete nodes (not the path).
+      if (state.editingPathId && state.pathEdit && state.pathEdit.selected.size > 0) {
+        if (activeTool.onKeyDown) activeTool.onKeyDown(e);
+        break;
+      }
+      if (state.activePanel === 'artboards') {
+        if (state.activeArtboardId) state.removeArtboard(state.activeArtboardId);
+      } else if (state.activePanel === 'symbols') {
+        if (state.selectedSymbolId) state.removeSymbol(state.selectedSymbolId);
+      } else if (state.selectedShapeIds.length > 1) {
         const ids = [...state.selectedShapeIds];
         for (const id of ids) state.removeShape(id);
       } else if (state.selectedShapeId) {
@@ -300,9 +316,11 @@ setupMenus(state);
 setupProperties(state);
 setupLayerButtons(state);
 setupArtboardButtons(state);
+setupArtboardProps(state);
 setupColorPicker(state);
 setupAlign(state);
 setupSymbolButtons(state);
+setupRecentFilesMenu(state);
 
 // Initial render
 const initBounds = getArtboardsBounds();
@@ -322,16 +340,80 @@ canvasArea.addEventListener('dragover', (e) => {
 canvasArea.addEventListener('drop', (e) => {
   e.preventDefault();
   const files = e.dataTransfer?.files;
-  if (!files) return;
+  if (!files || files.length === 0) return;
+
+  const file = files[0];
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+  const isLegacy = /\.svgmaker$/i.test(file.name);
+
+  // Dropping a document (SVG or legacy project) opens it for editing.
+  if (isSvg || isLegacy) {
+    if (state.shapes.length > 0 &&
+        !confirm(`Open "${file.name}" and replace the current document?`)) return;
+
+    // Prefer a writable handle so the dropped file can be saved in place.
+    const item = e.dataTransfer?.items?.[0] as (DataTransferItem & {
+      getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>;
+    }) | undefined;
+    if (item?.getAsFileSystemHandle) {
+      item.getAsFileSystemHandle().then((handle) => {
+        if (handle && handle.kind === 'file') {
+          openHandle(state, handle as FileSystemFileHandle);
+        } else {
+          readDroppedDoc(file);
+        }
+      }).catch(() => readDroppedDoc(file));
+    } else {
+      readDroppedDoc(file);
+    }
+    return;
+  }
+
+  // Other image types are embedded as <image>.
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    if (file.type.startsWith('image/')) {
-      (tools.image as ImageTool).loadImageFile(file);
+    if (files[i].type.startsWith('image/')) {
+      (tools.image as ImageTool).loadImageFile(files[i]);
     }
   }
 });
+
+function readDroppedDoc(file: File): void {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      openTextWithoutHandle(state, reader.result as string, file.name);
+    } catch (err) {
+      alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+  reader.readAsText(file);
+}
 
 window.addEventListener('resize', () => {
   canvas.initSize(getArtboardsBounds());
   drawRulers(canvas);
 });
+
+// Register the service worker for offline/PWA support. Production only, so it
+// never caches modules during dev (which would break HMR).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline support unavailable */ });
+  });
+}
+
+// File Handling API: when the OS opens an .svg/.svgmaker with the installed
+// PWA, it hands us file handles here. Route them through the normal open path.
+const launchQueue = (window as unknown as {
+  launchQueue?: { setConsumer: (cb: (params: { files: FileSystemFileHandle[] }) => void) => void };
+}).launchQueue;
+if (launchQueue) {
+  launchQueue.setConsumer((params) => {
+    const handle = params.files?.[0];
+    if (handle) {
+      openHandle(state, handle).catch((err) => {
+        alert('Failed to open file: ' + (err instanceof Error ? err.message : String(err)));
+      });
+    }
+  });
+}

@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { importImageFile } from '../ui/import-image';
 
 export class ImageTool extends BaseTool {
   name = 'image';
@@ -50,58 +51,6 @@ export class ImageTool extends BaseTool {
   }
 
   loadImageFile(file: File): void {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      this.placeImage(dataUrl);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  private placeImage(dataUrl: string): void {
-    // Create a temporary HTML image to get dimensions
-    const img = new Image();
-    img.onload = () => {
-      const el = document.createElementNS(this.NS, 'image') as SVGImageElement;
-      const id = this.state.nextId();
-      el.id = id;
-      const name = `image ${id.replace('shape-', '#')}`;
-      el.setAttribute('data-name', name);
-
-      // Place at artboard center, preserving aspect ratio
-      const ab = this.state.getActiveArtboard();
-      let w = img.naturalWidth;
-      let h = img.naturalHeight;
-
-      // Scale down if larger than artboard
-      const maxW = ab.width * 0.8;
-      const maxH = ab.height * 0.8;
-      if (w > maxW || h > maxH) {
-        const scale = Math.min(maxW / w, maxH / h);
-        w = Math.round(w * scale);
-        h = Math.round(h * scale);
-      }
-
-      const x = ab.x + (ab.width - w) / 2;
-      const y = ab.y + (ab.height - h) / 2;
-
-      el.setAttribute('x', String(x));
-      el.setAttribute('y', String(y));
-      el.setAttribute('width', String(w));
-      el.setAttribute('height', String(h));
-      el.setAttribute('href', dataUrl);
-      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
-      this.state.addShape({
-        id,
-        type: 'image',
-        element: el,
-        name,
-        style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
-        visible: true,
-        locked: false,
-      });
-    };
-    img.src = dataUrl;
+    importImageFile(this.state, file);
   }
 }

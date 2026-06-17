@@ -73,6 +73,15 @@ input, select, button { font-family: inherit; font-size: 11px; }
   gap: 0;
 }
 
+.project-name {
+  margin-left: 12px;
+  color: var(--ai-text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-dropdown {
   position: relative;
 }
@@ -138,6 +147,35 @@ input, select, button { font-family: inherit; font-size: 11px; }
   height: 1px;
   background: var(--ai-border-light);
   margin: 3px 8px;
+}
+
+.menu-section-label {
+  padding: 2px 20px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--ai-text-dim);
+}
+
+.menu-recent button {
+  font-size: 11px;
+  padding: 3px 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.menu-recent button:disabled {
+  color: var(--ai-text-dim);
+  font-style: italic;
+  cursor: default;
+}
+
+.menu-recent button:disabled:hover {
+  background: none;
+  color: var(--ai-text-dim);
 }
 
 /* ============ CONTROL BAR ============ */
@@ -441,10 +479,31 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-left: 1px solid var(--ai-border);
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Layers panel grows to fill the remaining height; its list scrolls inside. */
+#panel-layers {
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+#panel-layers.collapsed {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+#panel-layers .panel-body-layers {
+  flex: 1 1 auto;
+  max-height: none;
 }
 
 .panel {
   border-bottom: 1px solid var(--ai-border);
+  flex-shrink: 0;
 }
 
 .panel-header {
@@ -464,6 +523,21 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text-bright);
   text-transform: uppercase;
   letter-spacing: 0.8px;
+  margin-right: auto;
+}
+
+.panel-add {
+  background: none;
+  border: none;
+  color: var(--ai-text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.panel-add:hover {
+  color: var(--ai-accent);
 }
 
 .panel-collapse {
@@ -971,19 +1045,32 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .layer-vis, .layer-lock {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 14px;
   color: var(--ai-text-dim);
   flex-shrink: 0;
 }
 
 .layer-vis:hover, .layer-lock:hover {
   color: var(--ai-text);
+}
+
+/* Unlocked padlock: visible but faded, so the toggle is always discoverable. */
+.layer-lock.unlocked {
+  opacity: 0.3;
+}
+
+.layer-item:hover .layer-lock.unlocked {
+  opacity: 0.55;
+}
+
+.layer-lock.unlocked:hover {
+  opacity: 1;
 }
 
 .layer-color {
@@ -1018,6 +1105,88 @@ input, select, button { font-family: inherit; font-size: 11px; }
   padding: 1px 4px;
   font-size: 11px;
   outline: none;
+}
+
+.ab-props {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  background: var(--ai-panel-dark);
+  border-top: 1px solid var(--ai-border);
+}
+
+.ab-prop {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ab-prop label {
+  color: var(--ai-text-dim);
+  font-size: 10px;
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.ab-prop input {
+  width: 100%;
+  min-width: 0;
+  background: var(--ai-input);
+  color: var(--ai-text);
+  border: 1px solid var(--ai-border);
+  border-radius: 2px;
+  padding: 2px 3px;
+  font-size: 10px;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.ab-prop input:hover {
+  border-color: var(--ai-text-dim);
+}
+
+.ab-prop input:focus {
+  border-color: var(--ai-accent);
+}
+
+.ab-prop input::-webkit-outer-spin-button,
+.ab-prop input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 130px;
+  background: var(--ai-panel);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.context-menu-item {
+  background: none;
+  border: none;
+  color: var(--ai-text);
+  text-align: left;
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background: var(--ai-accent);
+  color: white;
+}
+
+.context-menu-item.danger:hover {
+  background: #c0392b;
 }
 
 .panel-footer {

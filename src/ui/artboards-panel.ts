@@ -1,9 +1,20 @@
 import type { AppState } from '../core/state';
+import { showContextMenu, beginInlineRename } from './panel-helpers';
 
 export function updateArtboardsPanel(state: AppState): void {
   const list = document.getElementById('artboards-list');
   if (!list) return;
   list.innerHTML = '';
+
+  const renameArtboard = (id: string) => {
+    const nameEl = list.querySelector(`li[data-ab-id="${id}"] .layer-name`) as HTMLElement | null;
+    const ab = state.getArtboardById(id);
+    if (!nameEl || !ab) return;
+    beginInlineRename(nameEl, ab.name, (newName) => {
+      ab.name = newName;
+      state.onChange_public();
+    });
+  };
 
   for (const ab of state.artboards) {
     const li = document.createElement('li');
@@ -21,35 +32,41 @@ export function updateArtboardsPanel(state: AppState): void {
 
     const dims = document.createElement('span');
     dims.className = 'layer-dims';
-    dims.textContent = `${ab.width} x ${ab.height}`;
-    dims.style.cssText = 'color:#888; font-size:9px; margin-left:auto; flex-shrink:0;';
+    dims.textContent = `${ab.width} × ${ab.height}`;
+    dims.title = 'Edit position and size in the fields below';
 
     li.appendChild(icon);
     li.appendChild(name);
     li.appendChild(dims);
 
     li.addEventListener('click', () => {
+      state.activePanel = 'artboards';
       state.setActiveArtboard(ab.id);
       state.selectedArtboardId = ab.id;
     });
 
-    li.addEventListener('dblclick', () => {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = ab.name;
-      input.className = 'layer-rename';
-      name.replaceWith(input);
-      input.focus();
-      input.select();
-      const finish = () => {
-        ab.name = input.value || ab.name;
-        state.onChange_public();
-      };
-      input.addEventListener('blur', finish);
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') input.blur();
-        if (e.key === 'Escape') { input.value = ab.name; input.blur(); }
-      });
+    // Click the name of the active artboard to rename it.
+    name.addEventListener('click', (e) => {
+      if (state.activeArtboardId === ab.id) {
+        e.stopPropagation();
+        renameArtboard(ab.id);
+      }
+    });
+
+    li.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      renameArtboard(ab.id);
+    });
+
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      state.activePanel = 'artboards';
+      state.setActiveArtboard(ab.id);
+      state.selectedArtboardId = ab.id;
+      showContextMenu(e.clientX, e.clientY, [
+        { label: 'Rename', action: () => renameArtboard(ab.id) },
+        { label: 'Delete', danger: true, action: () => state.removeArtboard(ab.id) },
+      ]);
     });
 
     list.appendChild(li);
@@ -59,12 +76,56 @@ export function updateArtboardsPanel(state: AppState): void {
   const activeAb = state.getActiveArtboard();
   const labelEl = document.getElementById('artboard-label');
   if (labelEl) {
-    labelEl.textContent = `${activeAb.name}: ${activeAb.width} \u00D7 ${activeAb.height}`;
+    labelEl.textContent = `${activeAb.name}: ${activeAb.width} × ${activeAb.height}`;
+  }
+
+  // Sync the X/Y/W/H editor strip to the active artboard. Skip the field the
+  // user is currently typing in so we don't clobber it mid-edit.
+  const props: Array<[string, number]> = [
+    ['ab-prop-x', activeAb.x],
+    ['ab-prop-y', activeAb.y],
+    ['ab-prop-w', activeAb.width],
+    ['ab-prop-h', activeAb.height],
+  ];
+  for (const [elId, val] of props) {
+    const input = document.getElementById(elId) as HTMLInputElement | null;
+    if (input && document.activeElement !== input) input.value = String(val);
+  }
+}
+
+type AbField = 'x' | 'y' | 'width' | 'height';
+
+/** Wire the labeled X/Y/W/H inputs that edit the active artboard's geometry. */
+export function setupArtboardProps(state: AppState): void {
+  const fields: Array<[AbField, string]> = [
+    ['x', 'ab-prop-x'],
+    ['y', 'ab-prop-y'],
+    ['width', 'ab-prop-w'],
+    ['height', 'ab-prop-h'],
+  ];
+
+  for (const [field, elId] of fields) {
+    const input = document.getElementById(elId) as HTMLInputElement | null;
+    if (!input) continue;
+
+    input.addEventListener('input', () => {
+      const ab = state.getActiveArtboard();
+      if (!ab) return;
+      let v = Math.round(parseFloat(input.value));
+      if (!Number.isFinite(v)) return;
+      if ((field === 'width' || field === 'height') && v < 1) v = 1;
+      state.updateArtboard(ab.id, { [field]: v });
+    });
+
+    // Commit a single history checkpoint when the edit finishes.
+    input.addEventListener('change', () => state.saveHistory());
   }
 }
 
 export function setupArtboardButtons(state: AppState): void {
-  document.getElementById('btn-ab-add')?.addEventListener('click', () => {
+  document.getElementById('btn-ab-add')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.activePanel = 'artboards';
     const active = state.getActiveArtboard();
     // Place new artboard to the right of the rightmost artboard
     let maxRight = 0;

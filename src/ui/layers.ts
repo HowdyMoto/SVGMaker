@@ -1,9 +1,22 @@
 import type { AppState } from '../core/state';
 import type { ShapeData } from '../core/types';
+import { showContextMenu, beginInlineRename } from './panel-helpers';
 
 export function updateLayersPanel(state: AppState): void {
   const list = document.getElementById('layers-list')!;
   list.innerHTML = '';
+
+  // Re-query the live name element by id so rename works even after re-renders.
+  const renameShape = (id: string) => {
+    const nameEl = list.querySelector(`li[data-id="${id}"] .layer-name`) as HTMLElement | null;
+    const shape = state.findShapeById(id);
+    if (!nameEl || !shape) return;
+    beginInlineRename(nameEl, shape.name, (newName) => {
+      shape.name = newName;
+      shape.element.setAttribute('data-name', newName);
+      state.onChange_public();
+    });
+  };
 
   const renderShapes = (shapes: ShapeData[], depth: number) => {
     for (let i = shapes.length - 1; i >= 0; i--) {
@@ -66,20 +79,15 @@ export function updateLayersPanel(state: AppState): void {
         state.toggleVisibility(shape.id);
       });
 
-      // Lock toggle
+      // Lock toggle — show a faded open padlock when unlocked so it's clickable.
       const lock = document.createElement('span');
-      lock.className = 'layer-lock';
-      lock.innerHTML = shape.locked ? '&#x1F512;' : '';
+      lock.className = shape.locked ? 'layer-lock' : 'layer-lock unlocked';
+      lock.innerHTML = shape.locked ? '&#x1F512;' : '&#x1F513;';
       lock.title = shape.locked ? 'Unlock' : 'Lock';
       lock.addEventListener('click', (e) => {
         e.stopPropagation();
         state.toggleLock(shape.id);
       });
-
-      // Color indicator — change color for groups
-      const color = document.createElement('span');
-      color.className = 'layer-color';
-      if (isGroup) color.classList.add('layer-color-group');
 
       // Icon
       const icon = document.createElement('span');
@@ -93,12 +101,12 @@ export function updateLayersPanel(state: AppState): void {
 
       li.appendChild(vis);
       li.appendChild(lock);
-      li.appendChild(color);
       li.appendChild(icon);
       li.appendChild(name);
 
       // Click to select
       li.addEventListener('click', (e) => {
+        state.activePanel = 'layers';
         if (e.shiftKey) {
           state.toggleMultiSelect(shape.id);
         } else {
@@ -106,25 +114,29 @@ export function updateLayersPanel(state: AppState): void {
         }
       });
 
+      // Click the name of an already-selected item to rename it (Finder-style).
+      name.addEventListener('click', (e) => {
+        const onlySelected = state.selectedShapeId === shape.id && state.selectedShapeIds.length <= 1;
+        if (onlySelected) {
+          e.stopPropagation();
+          renameShape(shape.id);
+        }
+      });
+
       // Double-click to rename
-      li.addEventListener('dblclick', () => {
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = shape.name;
-        input.className = 'layer-rename';
-        name.replaceWith(input);
-        input.focus();
-        input.select();
-        const finish = () => {
-          shape.name = input.value || shape.name;
-          shape.element.setAttribute('data-name', shape.name);
-          state.onChange_public();
-        };
-        input.addEventListener('blur', finish);
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') input.blur();
-          if (e.key === 'Escape') { input.value = shape.name; input.blur(); }
-        });
+      li.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        renameShape(shape.id);
+      });
+
+      // Right-click context menu
+      li.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        state.activePanel = 'layers';
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'Rename', action: () => renameShape(shape.id) },
+          { label: 'Delete', danger: true, action: () => state.removeShape(shape.id) },
+        ]);
       });
 
       list.appendChild(li);
@@ -156,6 +168,11 @@ function getShapeIcon(type: string): string {
 }
 
 export function setupLayerButtons(state: AppState): void {
+  document.getElementById('btn-layer-add')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.activePanel = 'layers';
+    state.addEmptyGroup();
+  });
   document.getElementById('btn-layer-up')!.addEventListener('click', () => {
     if (state.selectedShapeId) state.moveShapeUp(state.selectedShapeId);
   });

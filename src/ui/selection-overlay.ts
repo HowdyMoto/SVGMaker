@@ -44,6 +44,9 @@ export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElem
   selectionLayer.innerHTML = '';
   if (marquee) selectionLayer.appendChild(marquee);
 
+  // While node-editing a path, the node overlay owns the display.
+  if (state.editingPathId) return;
+
   const selectedIds = state.selectedShapeIds;
   if (selectedIds.length === 0) return;
 

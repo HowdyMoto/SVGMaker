@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point, ShapeData } from '../core/types';
+import { scalePathData } from '../core/path-model';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -15,6 +16,9 @@ export class SelectTool extends BaseTool {
   private resizeHandle = '';
   private resizeOrigBBox: DOMRect | null = null;
   private resizeStart: Point = { x: 0, y: 0 };
+  // Original geometry (path `d` / poly `points`) captured at resize start, so
+  // each mousemove scales from the original rather than compounding.
+  private resizeOrigGeometry: string | null = null;
 
   // Rotation state
   private rotating = false;
@@ -72,10 +76,15 @@ export class SelectTool extends BaseTool {
       this.resizing = true;
       this.resizeHandle = handle;
       this.resizeStart = { ...pt };
+      this.resizeOrigGeometry = null;
       if (isMulti) {
         this.resizeOrigBBox = this.multiCombinedBBox!;
       } else {
-        this.resizeOrigBBox = (shapes[0].element as unknown as SVGGraphicsElement).getBBox();
+        const el = shapes[0].element;
+        this.resizeOrigBBox = (el as unknown as SVGGraphicsElement).getBBox();
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'path') this.resizeOrigGeometry = el.getAttribute('d');
+        else if (tag === 'polyline' || tag === 'polygon') this.resizeOrigGeometry = el.getAttribute('points');
       }
       return;
     }
@@ -151,8 +160,13 @@ export class SelectTool extends BaseTool {
 
     // --- Resize ---
     if (this.resizing && this.resizeOrigBBox) {
-      const dx = pt.x - this.resizeStart.x;
-      const dy = pt.y - this.resizeStart.y;
+      let dx = pt.x - this.resizeStart.x;
+      let dy = pt.y - this.resizeStart.y;
+      // Shift on a corner handle keeps the selection's proportions.
+      if (e.shiftKey) {
+        const c = this.constrainProportional(dx, dy);
+        dx = c.dx; dy = c.dy;
+      }
       if (this.state.selectedShapeIds.length > 1) {
         this.applyMultiResize(dx, dy);
       } else {
@@ -194,6 +208,7 @@ export class SelectTool extends BaseTool {
       this.resizing = false;
       this.rotating = false;
       this.resizeOrigBBox = null;
+      this.resizeOrigGeometry = null;
     }
     this.canvas.endPan();
   }
@@ -464,6 +479,27 @@ export class SelectTool extends BaseTool {
 
   // ---- Transform helpers ----
 
+  /**
+   * Constrain a corner-handle drag so the selection scales uniformly (locks
+   * aspect ratio). The axis dragged farther (proportionally) drives the scale;
+   * the other follows. Edge handles are returned unchanged.
+   */
+  private constrainProportional(dx: number, dy: number): { dx: number; dy: number } {
+    const bb = this.resizeOrigBBox;
+    const h = this.resizeHandle;
+    if (!bb || bb.width <= 0 || bb.height <= 0) return { dx, dy };
+    const hasE = h.includes('e'), hasW = h.includes('w'), hasN = h.includes('n'), hasS = h.includes('s');
+    if (!((hasE || hasW) && (hasN || hasS))) return { dx, dy }; // corners only
+
+    // Signed growth of width/height implied by the drag.
+    let dW = hasE ? dx : -dx;
+    let dH = hasS ? dy : -dy;
+    const rel = Math.abs(dW / bb.width) >= Math.abs(dH / bb.height) ? dW / bb.width : dH / bb.height;
+    dW = rel * bb.width;
+    dH = rel * bb.height;
+    return { dx: hasE ? dW : -dW, dy: hasS ? dH : -dH };
+  }
+
   private applyRotation(shape: { element: SVGElement; rotation?: number }): void {
     const el = shape.element;
     const rotation = shape.rotation ?? 0;
@@ -497,6 +533,26 @@ export class SelectTool extends BaseTool {
     if (newH < 1) newH = 1;
 
     const tag = el.tagName.toLowerCase();
+
+    // Paths and polylines/polygons: scale their baked-in geometry about the
+    // fixed (opposite) corner, recomputed from the original captured at start.
+    if ((tag === 'path' || tag === 'polyline' || tag === 'polygon') && this.resizeOrigGeometry !== null) {
+      const sx = origBBox.width !== 0 ? newW / origBBox.width : 1;
+      const sy = origBBox.height !== 0 ? newH / origBBox.height : 1;
+      const fx = handle.includes('w') ? origBBox.x + origBBox.width : origBBox.x;
+      const fy = handle.includes('n') ? origBBox.y + origBBox.height : origBBox.y;
+      if (tag === 'path') {
+        el.setAttribute('d', scalePathData(this.resizeOrigGeometry, fx, fy, sx, sy));
+      } else {
+        const pts = this.resizeOrigGeometry.trim().split(/\s+/).map(p => {
+          const [px, py] = p.split(',').map(Number);
+          return `${fx + (px - fx) * sx},${fy + (py - fy) * sy}`;
+        }).join(' ');
+        el.setAttribute('points', pts);
+      }
+      return;
+    }
+
     if (tag === 'rect') {
       el.setAttribute('x', String(newX));
       el.setAttribute('y', String(newY));

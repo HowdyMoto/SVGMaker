@@ -1,20 +1,36 @@
 import type { AppState } from '../core/state';
+import { saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
+import { SVG_NS_DECLS } from '../core/svg-ns';
 
-export function exportSVG(state: AppState): void {
+const SVG_PICKER_TYPES = [
+  { description: 'SVG Image', accept: { 'image/svg+xml': ['.svg'] } },
+];
+
+export async function exportSVG(state: AppState): Promise<void> {
   const content = state.getDrawingLayerSVG();
   const ab = state.artboard;
   const svgString = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">
+<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">
 ${state.getDefsBlock()}${content}
 </svg>`;
 
-  const blob = new Blob([svgString], { type: 'image/svg+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'drawing.svg';
-  a.click();
-  URL.revokeObjectURL(url);
+  const filename = `${ab.name || 'drawing'}.svg`;
+
+  // Prefer a real Save dialog (Chrome/Edge); fall back to a download.
+  try {
+    const handle = await saveFilePicker(filename, SVG_PICKER_TYPES);
+    if (handle) {
+      await writeHandle(handle, svgString);
+      return;
+    }
+    // handle === null means either unsupported or the user cancelled.
+    if ('showSaveFilePicker' in window) return; // supported but cancelled
+  } catch (err) {
+    alert('Failed to export SVG: ' + (err instanceof Error ? err.message : String(err)));
+    return;
+  }
+
+  downloadFile(filename, svgString, 'image/svg+xml');
 }
 
 export function importSVG(state: AppState): void {
@@ -35,7 +51,7 @@ export function importSVG(state: AppState): void {
 export function exportPNG(state: AppState): void {
   const content = state.getDrawingLayerSVG();
   const ab = state.artboard;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${state.getDefsBlock()}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${state.getDefsBlock()}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
 
   const img = new Image();
   const blob = new Blob([svgString], { type: 'image/svg+xml' });

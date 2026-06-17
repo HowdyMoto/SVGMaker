@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { PathEditSession } from '../core/path-edit';
 
 interface PathNode {
   point: Point;
@@ -15,12 +16,28 @@ export class PathTool extends BaseTool {
   private dotEls: SVGElement[] = [];
   private isDragging = false;
   private currentNode: PathNode | null = null;
+  private closed = false;
 
-  activate(): void { this.nodes = []; this.cleanup(); }
+  activate(): void { this.nodes = []; this.closed = false; this.cleanup(); }
   deactivate(): void { this.finishPath(); }
 
   onMouseDown(pt: Point, e: MouseEvent): void {
     if (e.detail === 2) { this.finishPath(); return; }
+
+    if (this.nodes.length === 0) {
+      // Not mid-draw: clicking on the selected path's anchor deletes it and on
+      // a segment inserts a point (Illustrator's Pen +/- behavior).
+      if (this.tryEditSelectedPath(pt)) return;
+    } else {
+      // Mid-draw: clicking near the first node closes the loop.
+      const first = this.nodes[0].point;
+      if (Math.hypot(pt.x - first.x, pt.y - first.y) <= this.tolerance()) {
+        this.closed = true;
+        this.finishPath();
+        return;
+      }
+    }
+
     this.isDragging = true;
     const node: PathNode = { point: { ...pt } };
     this.currentNode = node;
@@ -97,12 +114,12 @@ export class PathTool extends BaseTool {
 
   private finishPath(): void {
     this.cleanup();
-    if (this.nodes.length < 2) { this.nodes = []; return; }
+    if (this.nodes.length < 2) { this.nodes = []; this.closed = false; return; }
 
     const el = document.createElementNS(this.NS, 'path') as SVGPathElement;
     const id = this.state.nextId();
     el.id = id;
-    el.setAttribute('d', this.buildPathD(this.nodes));
+    el.setAttribute('d', this.buildPathD(this.nodes) + (this.closed ? ' Z' : ''));
     el.setAttribute('fill', this.state.fillNone ? 'none' : this.state.defaultStyle.fill);
     el.setAttribute('stroke', this.state.strokeNone ? 'none' : this.state.defaultStyle.stroke);
     el.setAttribute('stroke-width', String(this.state.defaultStyle.strokeWidth));
@@ -117,11 +134,76 @@ export class PathTool extends BaseTool {
       visible: true, locked: false,
     });
     this.nodes = [];
+    this.closed = false;
   }
 
   private cleanup(): void {
     if (this.previewEl) { this.previewEl.remove(); this.previewEl = null; }
     for (const dot of this.dotEls) dot.remove();
     this.dotEls = [];
+  }
+
+  /** Pixel hit tolerance in svg-user units. */
+  private tolerance(): number {
+    return 8 / this.canvas.getZoom();
+  }
+
+  /**
+   * Convert an svg-user point (viewBox coords) to an element's local space.
+   * Mapping relative to the drawing layer cancels the viewBox offset baked into
+   * getCTM().
+   */
+  private toLocal(pt: Point, el: SVGElement): Point {
+    const drawing = this.svgCanvas.querySelector('#drawing-layer') as unknown as SVGGraphicsElement | null;
+    const elCtm = (el as unknown as SVGGraphicsElement).getCTM?.();
+    const parentCtm = drawing?.getCTM?.();
+    if (!elCtm || !parentCtm) return pt;
+    const m = parentCtm.inverse().multiply(elCtm);
+    const p = this.svgCanvas.createSVGPoint();
+    p.x = pt.x; p.y = pt.y;
+    const local = p.matrixTransform(m.inverse());
+    return { x: local.x, y: local.y };
+  }
+
+  /**
+   * If a path is selected and the click lands on one of its anchors or segments,
+   * delete/insert a node respectively. Returns true if it handled the click.
+   */
+  private tryEditSelectedPath(pt: Point): boolean {
+    const sel = this.state.getSelectedShape();
+    if (!sel || sel.type !== 'path' || sel.locked) return false;
+    const d = sel.element.getAttribute('d');
+    if (!d) return false;
+
+    const session = new PathEditSession(d);
+    const local = this.toLocal(pt, sel.element);
+    const tol = this.tolerance();
+
+    const a = session.hitAnchor(local.x, local.y, tol);
+    if (a) {
+      session.selectOnly(a.sp, a.i);
+      if (!session.deleteSelected()) return false;
+      this.commitTo(sel.element, session);
+      return true;
+    }
+
+    const seg = session.hitSegment(local.x, local.y, tol);
+    if (seg) {
+      session.insertAt(seg);
+      this.commitTo(sel.element, session);
+      return true;
+    }
+
+    return false;
+  }
+
+  private commitTo(el: SVGElement, session: PathEditSession): void {
+    if (session.isEmpty) {
+      this.state.removeShape(el.id);
+      return;
+    }
+    el.setAttribute('d', session.commit());
+    this.state.saveHistory();
+    this.state.onChange_public();
   }
 }

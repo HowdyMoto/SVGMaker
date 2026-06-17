@@ -1,7 +1,9 @@
 import type { AppState } from '../core/state';
 import { exportSVG, importSVG } from './export';
 import { showExportDialog } from './export-dialog';
-import { saveProject, openProject } from './project-file';
+import { exportTrack } from './export-track';
+import { pickAndImportImage } from './import-image';
+import { saveProject, saveProjectAs, openProject, resetProjectFile } from './project-file';
 
 export function setupMenus(state: AppState): void {
   const dropdowns = document.querySelectorAll('.menu-dropdown');
@@ -47,13 +49,17 @@ function handleMenuAction(action: string, state: AppState): void {
     case 'new': {
       if (state.shapes.length > 0 && !confirm('Clear canvas and start new?')) return;
       state.clearAll();
+      resetProjectFile();
       break;
     }
     case 'open-project': openProject(state); break;
     case 'save-project': saveProject(state); break;
+    case 'save-project-as': saveProjectAs(state); break;
     case 'import': importSVG(state); break;
+    case 'import-image': pickAndImportImage(state); break;
     case 'export': exportSVG(state); break;
     case 'export-all': showExportDialog(state); break;
+    case 'export-track': exportTrack(state); break;
     case 'undo': state.undo(); break;
     case 'redo': state.redo(); break;
     case 'cut':

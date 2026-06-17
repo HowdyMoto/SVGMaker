@@ -1,12 +1,24 @@
 import type { AppState } from '../core/state';
+import { showContextMenu, beginInlineRename } from './panel-helpers';
 
 export function updateSymbolsPanel(state: AppState): void {
   const list = document.getElementById('symbols-list')!;
   list.innerHTML = '';
 
+  const renameSymbol = (id: string) => {
+    const nameEl = list.querySelector(`li[data-id="${id}"] .layer-name`) as HTMLElement | null;
+    const sym = state.symbols.find(s => s.id === id);
+    if (!nameEl || !sym) return;
+    beginInlineRename(nameEl, sym.name, (newName) => {
+      sym.name = newName;
+      state.onChange_public();
+    });
+  };
+
   for (const sym of state.symbols) {
     const li = document.createElement('li');
     li.className = 'layer-item';
+    if (sym.id === state.selectedSymbolId) li.classList.add('selected');
     li.setAttribute('data-id', sym.id);
 
     const icon = document.createElement('span');
@@ -30,12 +42,44 @@ export function updateSymbolsPanel(state: AppState): void {
     li.appendChild(name);
     li.appendChild(placeBtn);
 
+    // Select
+    li.addEventListener('click', () => {
+      state.activePanel = 'symbols';
+      state.selectedSymbolId = sym.id;
+      state.onChange_public();
+    });
+
+    // Click the name of an already-selected symbol to rename it.
+    name.addEventListener('click', (e) => {
+      if (state.selectedSymbolId === sym.id) {
+        e.stopPropagation();
+        renameSymbol(sym.id);
+      }
+    });
+
+    li.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      renameSymbol(sym.id);
+    });
+
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      state.activePanel = 'symbols';
+      state.selectedSymbolId = sym.id;
+      showContextMenu(e.clientX, e.clientY, [
+        { label: 'Place instance', action: () => state.placeSymbolInstance(sym.id) },
+        { label: 'Rename', action: () => renameSymbol(sym.id) },
+        { label: 'Delete', danger: true, action: () => state.removeSymbol(sym.id) },
+      ]);
+    });
+
     list.appendChild(li);
   }
 }
 
 export function setupSymbolButtons(state: AppState): void {
-  document.getElementById('btn-create-symbol')!.addEventListener('click', () => {
+  document.getElementById('btn-create-symbol')!.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (state.selectedShapeId) {
       state.createSymbolFromShape(state.selectedShapeId);
     }

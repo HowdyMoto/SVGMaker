@@ -4,7 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SVGMaker</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#282828" />
+  <meta name="application-name" content="SVGMaker" />
+  <meta name="description" content="A browser-based SVG editor for drawing, editing and exporting vector graphics." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SVGMaker" />
+  <link rel="apple-touch-icon" href="icon.svg" />
 </head>
 <body>
   <div id="app">
@@ -14,13 +23,20 @@
         <div class="menu-dropdown" data-menu="file">
           <span class="menu-trigger">File</span>
           <div class="menu-panel">
-            <button data-action="new">New... <span class="shortcut">Ctrl+N</span></button>
-            <button data-action="open-project">Open Project... <span class="shortcut">Ctrl+O</span></button>
-            <button data-action="save-project">Save Project <span class="shortcut">Ctrl+S</span></button>
+            <button data-action="new">New <span class="shortcut">Ctrl+N</span></button>
+            <button data-action="open-project">Open... <span class="shortcut">Ctrl+O</span></button>
             <div class="menu-divider"></div>
-            <button data-action="import">Import SVG...</button>
-            <button data-action="export">Export Active Artboard SVG... <span class="shortcut">Ctrl+Shift+S</span></button>
+            <div class="menu-section-label">Recent Files</div>
+            <div id="recent-files-list" class="menu-recent"></div>
+            <div class="menu-divider"></div>
+            <button data-action="save-project">Save <span class="shortcut">Ctrl+S</span></button>
+            <button data-action="save-project-as">Save As...</button>
+            <div class="menu-divider"></div>
+            <button data-action="import">Import SVG... (merge into document)</button>
+            <button data-action="import-image">Import Image (PNG/JPG) to trace...</button>
+            <button data-action="export">Export Active Artboard (clean SVG)... <span class="shortcut">Ctrl+Shift+S</span></button>
             <button data-action="export-all">Export Artboards... <span class="shortcut">Ctrl+Alt+E</span></button>
+            <button data-action="export-track">Export for TraceCraft (single baked path)...</button>
           </div>
         </div>
         <div class="menu-dropdown" data-menu="edit">
@@ -75,6 +91,7 @@
           </div>
         </div>
       </nav>
+      <span id="project-name" class="project-name" title="Current project file">Untitled</span>
     </header>
 
     <!-- Control/Options Bar -->
@@ -373,6 +390,16 @@
               <span class="appearance-unit">px</span>
             </div>
 
+            <!-- Node point type (shown while node-editing a path) -->
+            <div class="appearance-row" id="prop-node-row" style="display:none">
+              <span class="appearance-label" title="Anchor point type">Point</span>
+              <div class="seg-btns">
+                <button class="appearance-toggle" id="prop-node-corner" title="Corner point (no handles)">Corner</button>
+                <button class="appearance-toggle" id="prop-node-smooth" title="Smooth point (connected handles)">Smooth</button>
+                <button class="appearance-toggle" id="prop-node-broken" title="Broken point (separated handles)">Broken</button>
+              </div>
+            </div>
+
             <div class="appearance-divider"></div>
 
             <!-- Opacity -->
@@ -459,13 +486,13 @@
         <div class="panel" id="panel-symbols">
           <div class="panel-header" data-panel="symbols">
             <span>Symbols</span>
+            <button class="panel-add" id="btn-create-symbol" title="Create Symbol from Selection">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
           <div class="panel-body panel-body-layers">
             <ul id="symbols-list"></ul>
           </div>
           <div class="panel-footer">
-            <button id="btn-create-symbol" title="Create Symbol from Selection">+ Create</button>
             <button id="btn-detach-symbol" title="Detach Symbol Instance">Detach</button>
           </div>
         </div>
@@ -474,13 +501,19 @@
         <div class="panel" id="panel-artboards">
           <div class="panel-header" data-panel="artboards">
             <span>Artboards</span>
+            <button class="panel-add" id="btn-ab-add" title="Add Artboard">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
           <div class="panel-body panel-body-layers">
             <ul id="artboards-list"></ul>
           </div>
+          <div class="ab-props" id="ab-props" title="Position and size of the selected artboard">
+            <div class="ab-prop"><label for="ab-prop-x">X</label><input type="number" id="ab-prop-x" step="1" /></div>
+            <div class="ab-prop"><label for="ab-prop-y">Y</label><input type="number" id="ab-prop-y" step="1" /></div>
+            <div class="ab-prop"><label for="ab-prop-w">W</label><input type="number" id="ab-prop-w" step="1" min="1" /></div>
+            <div class="ab-prop"><label for="ab-prop-h">H</label><input type="number" id="ab-prop-h" step="1" min="1" /></div>
+          </div>
           <div class="panel-footer">
-            <button id="btn-ab-add" title="Add Artboard">+ Add</button>
             <button id="btn-ab-delete" title="Delete Artboard">&#x1F5D1; Delete</button>
           </div>
         </div>
@@ -489,6 +522,7 @@
         <div class="panel" id="panel-layers">
           <div class="panel-header" data-panel="layers">
             <span>Layers</span>
+            <button class="panel-add" id="btn-layer-add" title="New Layer (empty group)">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
           <div class="panel-body panel-body-layers">

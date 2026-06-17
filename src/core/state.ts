@@ -1,4 +1,7 @@
 import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef, GradientDef, GradientStop, PatternDef } from './types';
+import { ensureSvgNamespaces } from './svg-ns';
+import { sanitizePathData } from './path-sanitize';
+import { PathEditSession } from './path-edit';
 
 export class AppState {
   currentTool: ToolName = 'select';
@@ -6,6 +9,11 @@ export class AppState {
   get selectedShapeId(): string | null {
     return this.selectedShapeIds.length > 0 ? this.selectedShapeIds[this.selectedShapeIds.length - 1] : null;
   }
+  // Node-editing session (Direct Selection / Pen). Non-null while a path's
+  // anchors are being edited; shared by the tools, overlay, and Properties panel.
+  editingPathId: string | null = null;
+  pathEdit: PathEditSession | null = null;
+
   private idCounter = 0;
   private abCounter = 0;
   private history: HistoryEntry[] = [];
@@ -17,6 +25,11 @@ export class AppState {
   artboards: Artboard[] = [];
   activeArtboardId: string | null = null;
   selectedArtboardId: string | null = null; // used by artboard tool
+
+  // Which side-panel list the user last interacted with, so Delete/Backspace
+  // targets the right thing ('layers' = shapes on canvas).
+  activePanel: 'layers' | 'artboards' | 'symbols' = 'layers';
+  selectedSymbolId: string | null = null;
 
   defaultStyle: ShapeStyle = {
     fill: '#FFFFFF',
@@ -160,6 +173,45 @@ export class AppState {
 
   selectShape(id: string | null): void {
     this.selectedShapeIds = id ? [id] : [];
+    if (this.editingPathId && id !== this.editingPathId) this.exitPathEdit(false);
+    this.onChangeCallback();
+  }
+
+  // ---- Node editing ----
+
+  /** Begin editing a path's anchors. No-op for non-path shapes. */
+  enterPathEdit(id: string): boolean {
+    const shape = this.findShapeById(id);
+    if (!shape || shape.type !== 'path' || shape.locked) return false;
+    const d = shape.element.getAttribute('d');
+    if (!d) return false;
+    this.editingPathId = id;
+    this.pathEdit = new PathEditSession(d);
+    this.selectedShapeIds = [id];
+    this.onChangeCallback();
+    return true;
+  }
+
+  exitPathEdit(notify = true): void {
+    if (!this.editingPathId && !this.pathEdit) return;
+    this.editingPathId = null;
+    this.pathEdit = null;
+    if (notify) this.onChangeCallback();
+  }
+
+  /** Write the live model back to the element's `d`. `record` saves an undo step. */
+  commitPathEdit(record = true): void {
+    if (!this.editingPathId || !this.pathEdit) return;
+    const shape = this.findShapeById(this.editingPathId);
+    if (!shape) return;
+    if (this.pathEdit.isEmpty) {
+      // All nodes deleted — remove the now-empty path.
+      this.removeShape(this.editingPathId);
+      this.exitPathEdit();
+      return;
+    }
+    shape.element.setAttribute('d', this.pathEdit.commit());
+    if (record) this.saveHistory();
     this.onChangeCallback();
   }
 
@@ -410,6 +462,13 @@ export class AppState {
     this.drawingLayer.innerHTML = entry.svgContent;
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = entry.selectedId ? [entry.selectedId] : [];
+    // Keep any node-editing session in sync with the restored geometry.
+    if (this.editingPathId) {
+      const shape = this.findShapeById(this.editingPathId);
+      const d = shape?.element.getAttribute('d');
+      if (shape && shape.type === 'path' && d) this.pathEdit = new PathEditSession(d);
+      else this.exitPathEdit(false);
+    }
     try {
       this.artboards = JSON.parse(entry.artboardsJson);
       // Restore abCounter
@@ -494,7 +553,31 @@ export class AppState {
     return null;
   }
 
+  /**
+   * SVGs imported from other tools (e.g. Inkscape) keep their paint in the CSS
+   * `style` attribute, which overrides presentation attributes. SVGMaker reads
+   * and writes presentation attributes, so promote any inline paint properties
+   * to attributes (and drop them from `style`) so both stay in sync.
+   */
+  private flattenInlineStyle(el: SVGElement): void {
+    if (!el.getAttribute('style')) return;
+    const props = [
+      'fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+      'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity',
+      'font-size', 'font-family', 'font-weight', 'font-style', 'rx',
+    ];
+    for (const prop of props) {
+      const val = el.style.getPropertyValue(prop);
+      if (val) {
+        el.setAttribute(prop, val); // inline style wins, so overwrite the attribute
+        el.style.removeProperty(prop);
+      }
+    }
+    if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
+  }
+
   private readStyle(el: SVGElement, type: ShapeData['type']): ShapeStyle {
+    this.flattenInlineStyle(el);
     if (type === 'group' || type === 'image' || type === 'use') {
       return {
         fill: el.getAttribute('fill') ?? 'none',
@@ -611,6 +694,30 @@ export class AppState {
     remaining.splice(insertIdx, 0, groupShape);
     this.shapes = remaining;
     this.selectedShapeIds = [groupId];
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Create a new empty group ("layer") at the top of the stack. */
+  addEmptyGroup(): void {
+    const gEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const id = this.nextId();
+    gEl.id = id;
+    const name = `Layer ${id.replace('shape-', '#')}`;
+    gEl.setAttribute('data-name', name);
+    this.drawingLayer.appendChild(gEl);
+
+    this.shapes.push({
+      id,
+      type: 'group',
+      element: gEl,
+      name,
+      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
+      visible: true,
+      locked: false,
+      children: [],
+    });
+    this.selectedShapeIds = [id];
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -799,6 +906,16 @@ export class AppState {
 
     this.selectedShapeIds = [newId];
     this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Remove a symbol definition (existing instances will no longer resolve). */
+  removeSymbol(id: string): void {
+    const idx = this.symbols.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    this.symbols[idx].element.remove();
+    this.symbols.splice(idx, 1);
+    if (this.selectedSymbolId === id) this.selectedSymbolId = null;
     this.onChangeCallback();
   }
 
@@ -1031,6 +1148,8 @@ export class AppState {
     this.drawingLayer.innerHTML = '';
     this.shapes = [];
     this.selectedShapeIds = [];
+    this.clearDefs();
+    this.selectedSymbolId = null;
     this.artboards = [{
       id: this.nextArtboardId(),
       x: 0, y: 0, width: 960, height: 540, name: 'Artboard 1',
@@ -1039,6 +1158,22 @@ export class AppState {
     this.selectedArtboardId = null;
     this.saveHistory();
     this.onChangeCallback();
+  }
+
+  /** Public wrapper: import gradients/patterns/symbols from a parsed SVG element. */
+  importDefsFrom(svgEl: Element): void {
+    this.importDefsFromSVG(svgEl);
+  }
+
+  /** Clear all symbols/gradients/patterns and empty the live <defs>. */
+  clearDefs(): void {
+    this.symbols = [];
+    this.gradients = [];
+    this.patterns = [];
+    this.symbolCounter = 0;
+    this.gradCounter = 0;
+    this.patternCounter = 0;
+    if (this.defsElement) this.defsElement.innerHTML = '';
   }
 
   private importDefsFromSVG(svgEl: Element): void {
@@ -1106,7 +1241,7 @@ export class AppState {
 
   importSVGContent(svgString: string): void {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(svgString, 'image/svg+xml');
+    const doc = parser.parseFromString(ensureSvgNamespaces(svgString), 'image/svg+xml');
     const svgEl = doc.querySelector('svg');
     if (!svgEl) return;
     this.drawingLayer.innerHTML = '';
@@ -1124,6 +1259,18 @@ export class AppState {
           const importedEl = document.importNode(child, true) as SVGElement;
           const id = this.nextId();
           importedEl.id = id;
+          // Strip degenerate subpaths (e.g. Inkscape's origin-anchored slivers
+          // that render as stray lines shooting off the artboard).
+          if (tag === 'path') {
+            const d = importedEl.getAttribute('d');
+            if (d) {
+              const { d: clean, removed } = sanitizePathData(d);
+              if (removed > 0) {
+                importedEl.setAttribute('d', clean);
+                console.info(`[import] removed ${removed} degenerate subpath(s) from ${id}`);
+              }
+            }
+          }
           const type = this.detectType(importedEl);
           if (!type) continue;
           const name = `${type} ${id.replace('shape-', '#')}`;
