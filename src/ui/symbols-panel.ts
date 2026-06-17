@@ -1,4 +1,6 @@
 import type { AppState } from '../core/state';
+import type { CommandContext } from '../commands';
+import { runCommand } from '../commands';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
 
 export function updateSymbolsPanel(state: AppState): void {
@@ -77,17 +79,13 @@ export function updateSymbolsPanel(state: AppState): void {
   }
 }
 
-export function setupSymbolButtons(state: AppState): void {
+export function setupSymbolButtons(ctx: CommandContext): void {
   document.getElementById('btn-create-symbol')!.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (state.selectedShapeId) {
-      state.createSymbolFromShape(state.selectedShapeId);
-    }
+    runCommand('object.create-symbol', ctx);
   });
 
   document.getElementById('btn-detach-symbol')!.addEventListener('click', () => {
-    if (state.selectedShapeId) {
-      state.detachSymbolInstance(state.selectedShapeId);
-    }
+    runCommand('object.detach-symbol', ctx);
   });
 }

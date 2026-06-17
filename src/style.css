@@ -126,6 +126,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text);
   cursor: default;
   text-align: left;
+  position: relative;
 }
 
 .menu-panel button:hover {
@@ -141,6 +142,20 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .menu-panel button:hover .shortcut {
   color: rgba(255,255,255,0.7);
+}
+
+/* Greyed-out commands — driven by each command's enabled() predicate. */
+.menu-panel button.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Checkmark for active toggles (Show Grid / Rulers / Transparency). */
+.menu-panel button.checked::before {
+  content: '\2713';
+  position: absolute;
+  left: 7px;
+  font-size: 11px;
 }
 
 .menu-divider {

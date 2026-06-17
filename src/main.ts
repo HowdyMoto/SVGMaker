@@ -21,7 +21,6 @@ import { updateSelectionOverlay } from './ui/selection-overlay';
 import { renderNodeOverlay } from './ui/node-overlay';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
-import { exportSVG } from './ui/export';
 import { setupMenus } from './ui/menus';
 import { drawRulers } from './ui/rulers';
 import { setupColorPicker } from './ui/color-picker';
@@ -29,11 +28,12 @@ import { setupAlign } from './ui/align';
 import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
-import { showExportDialog } from './ui/export-dialog';
-import { saveProject, openProject, openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
+import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
+import type { CommandContext } from './commands';
+import { runCommand, findCommandForEvent, isEnabled } from './commands';
 
 // DOM elements
 const svgCanvas = document.getElementById('svg-canvas') as unknown as SVGSVGElement;
@@ -86,6 +86,10 @@ const tools: Record<ToolName, Tool> = {
 };
 
 let activeTool: Tool = tools.select;
+
+// Shared context handed to every command (menus, keyboard, panel buttons).
+// `setTool` and `getArtboardsBounds` are hoisted function declarations.
+const commandCtx: CommandContext = { state, canvas, setTool, getArtboardsBounds };
 
 function getArtboardsBounds(): { x: number; y: number; w: number; h: number } {
   if (state.artboards.length === 0) return { x: 0, y: 0, w: 960, h: 540 };
@@ -180,96 +184,44 @@ let prevToolBeforeSpace: ToolName | null = null;
 
 window.addEventListener('keydown', (e: KeyboardEvent) => {
   const target = e.target as HTMLElement;
-  if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+  if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
 
-  if (e.ctrlKey || e.metaKey) {
-    if (e.altKey && e.key.toLowerCase() === 'e') {
-      e.preventDefault();
-      showExportDialog(state);
-      return;
-    }
-    switch (e.key) {
-      case 'z': e.preventDefault(); if (e.shiftKey) state.redo(); else state.undo(); break;
-      case 'y': e.preventDefault(); state.redo(); break;
-      case 'x': e.preventDefault(); if (state.selectedShapeId) state.cutShape(state.selectedShapeId); break;
-      case 'c': e.preventDefault(); if (state.selectedShapeId) state.copyShape(state.selectedShapeId); break;
-      case 'v': e.preventDefault(); state.pasteClipboard(); break;
-      case 'd': e.preventDefault(); if (state.selectedShapeId) state.duplicateShape(state.selectedShapeId); break;
-      case 'g': e.preventDefault(); if (e.shiftKey) { if (state.selectedShapeId) state.ungroupShape(state.selectedShapeId); } else { state.groupSelectedShapes(); } break;
-      case 'a': e.preventDefault(); if (e.shiftKey) { state.selectShape(null); } else { state.selectMultiple(state.shapes.map(s => s.id)); } break;
-      case 's': e.preventDefault(); if (e.shiftKey) exportSVG(state); else saveProject(state); break;
-      case 'e': e.preventDefault(); exportSVG(state); break;
-      case 'o': e.preventDefault(); openProject(state); break;
-      case '0': e.preventDefault(); canvas.fitToWindow(getArtboardsBounds()); break;
-      case '1': e.preventDefault(); canvas.setZoom(1); break;
-      case '=': case '+': e.preventDefault(); canvas.setZoom(canvas.getZoom() * 1.25); break;
-      case '-': e.preventDefault(); canvas.setZoom(canvas.getZoom() / 1.25); break;
+  // Node editing: Delete/Backspace removes the selected anchor points, not the
+  // whole path — so it can't go through the registry's edit.delete command.
+  if ((e.key === 'Delete' || e.key === 'Backspace') &&
+      state.editingPathId && state.pathEdit && state.pathEdit.selected.size > 0) {
+    e.preventDefault();
+    if (activeTool.onKeyDown) activeTool.onKeyDown(e);
+    return;
+  }
+
+  // Spring-loaded pan: holding Space temporarily switches to the Hand tool and
+  // restores the previous tool on keyup (handled below). Stateful, so bespoke.
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (!spaceDown) {
+      spaceDown = true;
+      prevToolBeforeSpace = state.currentTool;
+      setTool('hand');
     }
     return;
   }
 
-  // Shift+O for artboard tool
-  if (e.key === 'O' && e.shiftKey) {
-    setTool('artboard');
+  // Everything else dispatches through the command registry — the single
+  // source of truth shared with the menus and panel buttons. Only swallow the
+  // browser default when we actually run something (a disabled command lets the
+  // native key through, e.g. Backspace stays harmless with nothing selected).
+  const cmd = findCommandForEvent(e);
+  if (cmd) {
+    if (isEnabled(cmd, commandCtx)) {
+      e.preventDefault();
+      cmd.run(commandCtx);
+    }
     return;
   }
 
-  switch (e.key) {
-    case 'v': case 'V': setTool('select'); break;
-    case 'a': case 'A': setTool('directSelect'); break;
-    case 'm': case 'M': setTool('rect'); break;
-    case 'l': case 'L': setTool('ellipse'); break;
-    case 'p': case 'P': setTool('path'); break;
-    case 't': case 'T': setTool('text'); break;
-    case 'h': case 'H': setTool('hand'); break;
-    case 'z': case 'Z': setTool('zoom'); break;
-    case 'i': case 'I': setTool('eyedropper'); break;
-    case '\\': setTool('line'); break;
-    case 'Delete': case 'Backspace':
-      // While node-editing with anchors selected, delete nodes (not the path).
-      if (state.editingPathId && state.pathEdit && state.pathEdit.selected.size > 0) {
-        if (activeTool.onKeyDown) activeTool.onKeyDown(e);
-        break;
-      }
-      if (state.activePanel === 'artboards') {
-        if (state.activeArtboardId) state.removeArtboard(state.activeArtboardId);
-      } else if (state.activePanel === 'symbols') {
-        if (state.selectedSymbolId) state.removeSymbol(state.selectedSymbolId);
-      } else if (state.selectedShapeIds.length > 1) {
-        const ids = [...state.selectedShapeIds];
-        for (const id of ids) state.removeShape(id);
-      } else if (state.selectedShapeId) {
-        state.removeShape(state.selectedShapeId);
-      }
-      break;
-    case ' ':
-      e.preventDefault();
-      if (!spaceDown) {
-        spaceDown = true;
-        prevToolBeforeSpace = state.currentTool;
-        setTool('hand');
-      }
-      break;
-    case 'd': case 'D':
-      state.defaultStyle.fill = '#FFFFFF';
-      state.defaultStyle.stroke = '#000000';
-      state.fillNone = false;
-      state.strokeNone = false;
-      state.onChange_public();
-      break;
-    default:
-      if (activeTool.onKeyDown) activeTool.onKeyDown(e);
-  }
-
-  if (e.key === 'X' && e.shiftKey) {
-    const tmpFill = state.defaultStyle.fill;
-    state.defaultStyle.fill = state.defaultStyle.stroke;
-    state.defaultStyle.stroke = tmpFill;
-    const tmpNone = state.fillNone;
-    state.fillNone = state.strokeNone;
-    state.strokeNone = tmpNone;
-    state.onChange_public();
-  }
+  // Unhandled plain keys fall through to the active tool (e.g. pen Enter/Escape).
+  if (!e.ctrlKey && !e.metaKey && activeTool.onKeyDown) activeTool.onKeyDown(e);
 });
 
 window.addEventListener('keyup', (e: KeyboardEvent) => {
@@ -282,24 +234,9 @@ window.addEventListener('keyup', (e: KeyboardEvent) => {
   }
 });
 
-// Toolbar fill/stroke swap & default
-document.getElementById('tb-swap')?.addEventListener('click', () => {
-  const tmpFill = state.defaultStyle.fill;
-  state.defaultStyle.fill = state.defaultStyle.stroke;
-  state.defaultStyle.stroke = tmpFill;
-  const tmpNone = state.fillNone;
-  state.fillNone = state.strokeNone;
-  state.strokeNone = tmpNone;
-  state.onChange_public();
-});
-
-document.getElementById('tb-default')?.addEventListener('click', () => {
-  state.defaultStyle.fill = '#FFFFFF';
-  state.defaultStyle.stroke = '#000000';
-  state.fillNone = false;
-  state.strokeNone = false;
-  state.onChange_public();
-});
+// Toolbar fill/stroke swap & default — share the registry commands.
+document.getElementById('tb-swap')?.addEventListener('click', () => runCommand('color.swap-fill-stroke', commandCtx));
+document.getElementById('tb-default')?.addEventListener('click', () => runCommand('color.default-colors', commandCtx));
 
 // Rulers update on view change
 canvas.setOnViewChange(() => {
@@ -312,14 +249,14 @@ document.getElementById('btn-zoom-fit')?.addEventListener('click', () => {
 });
 
 // Setup
-setupMenus(state);
+setupMenus(commandCtx);
 setupProperties(state);
-setupLayerButtons(state);
+setupLayerButtons(commandCtx);
 setupArtboardButtons(state);
 setupArtboardProps(state);
 setupColorPicker(state);
 setupAlign(state);
-setupSymbolButtons(state);
+setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
 
 // Initial render

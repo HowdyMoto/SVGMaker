@@ -3,6 +3,15 @@ import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { PathEditSession } from './path-edit';
 
+/** One copied shape, captured as serialized markup so paste is self-contained. */
+interface ClipboardEntry {
+  markup: string;
+  type: ShapeData['type'];
+  style: ShapeStyle;
+  rotation?: number;
+  symbolId?: string;
+}
+
 export class AppState {
   currentTool: ToolName = 'select';
   shapes: ShapeData[] = [];
@@ -168,6 +177,20 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  /** Remove the entire current selection in a single undo step. */
+  removeSelected(): void {
+    if (this.selectedShapeIds.length === 0) return;
+    for (const id of [...this.selectedShapeIds]) {
+      const idx = this.shapes.findIndex(s => s.id === id);
+      if (idx === -1) continue;
+      this.shapes[idx].element.remove();
+      this.shapes.splice(idx, 1);
+    }
+    this.selectedShapeIds = [];
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
   getSelectedShape(): ShapeData | null {
     if (!this.selectedShapeId) return null;
     return this.shapes.find(s => s.id === this.selectedShapeId) ?? null;
@@ -230,6 +253,31 @@ export class AppState {
     const shape = this.shapes.find(s => s.id === id);
     if (!shape) return;
     shape.locked = !shape.locked;
+    // Mirror onto the element so the lock survives history (which snapshots the
+    // drawing layer's markup) and round-trips through rebuildShapesFromDOM.
+    if (shape.locked) shape.element.setAttribute('data-locked', 'true');
+    else shape.element.removeAttribute('data-locked');
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Make every top-level shape visible again. */
+  showAll(): void {
+    for (const s of this.shapes) {
+      s.visible = true;
+      (s.element as SVGElement).style.display = '';
+    }
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Unlock every top-level shape. */
+  unlockAll(): void {
+    for (const s of this.shapes) {
+      s.locked = false;
+      s.element.removeAttribute('data-locked');
+    }
+    this.saveHistory();
     this.onChangeCallback();
   }
 
@@ -259,12 +307,72 @@ export class AppState {
     }
   }
 
+  /** Re-append top-level shape elements so DOM paint order matches `this.shapes`. */
+  private syncDomOrder(): void {
+    for (const s of this.shapes) this.drawingLayer.appendChild(s.element);
+  }
+
+  /** Move the selected top-level shapes to the top of the z-order. */
+  bringToFront(): void {
+    const ids = new Set(this.selectedShapeIds);
+    const selected = this.shapes.filter(s => ids.has(s.id));
+    if (selected.length === 0) return;
+    const rest = this.shapes.filter(s => !ids.has(s.id));
+    this.shapes = [...rest, ...selected];
+    this.syncDomOrder();
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Move the selected top-level shapes to the bottom of the z-order. */
+  sendToBack(): void {
+    const ids = new Set(this.selectedShapeIds);
+    const selected = this.shapes.filter(s => ids.has(s.id));
+    if (selected.length === 0) return;
+    const rest = this.shapes.filter(s => !ids.has(s.id));
+    this.shapes = [...selected, ...rest];
+    this.syncDomOrder();
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
   duplicateShape(id: string): void {
+    const newId = this.cloneShapeById(id);
+    if (!newId) return;
+    this.selectedShapeIds = [newId];
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Duplicate the entire current selection in a single undo step. */
+  duplicateSelected(): void {
+    const ids = [...this.selectedShapeIds];
+    if (ids.length === 0) return;
+    const newIds: string[] = [];
+    for (const id of ids) {
+      const newId = this.cloneShapeById(id);
+      if (newId) newIds.push(newId);
+    }
+    if (newIds.length === 0) return;
+    this.selectedShapeIds = newIds;
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /**
+   * Clone a shape into the drawing layer offset by 10px, returning the new id.
+   * Does NOT record history / select / notify — callers batch those so a
+   * multi-duplicate is one undo step.
+   */
+  private cloneShapeById(id: string): string | null {
     const shape = this.shapes.find(s => s.id === id);
-    if (!shape) return;
+    if (!shape) return null;
     const newEl = shape.element.cloneNode(true) as SVGElement;
     const newId = this.nextId();
     newEl.id = newId;
+    // Re-id descendants so a duplicated group doesn't share child ids with the
+    // original (which corrupts findShapeById / idCounter after a history rebuild).
+    if (shape.type === 'group') this.reIdGroupChildren(newEl);
     const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
     const tag = newEl.tagName.toLowerCase();
     if (tag === 'rect' || tag === 'text') {
@@ -276,31 +384,54 @@ export class AppState {
     }
     const name = `${shape.type} ${newId.replace('shape-', '#')}`;
     newEl.setAttribute('data-name', name);
-    this.addShape({
+    this.shapes.push({
       id: newId, type: shape.type, element: newEl, name,
       style: { ...shape.style }, visible: true, locked: false,
+      rotation: shape.rotation, symbolId: shape.symbolId,
     });
+    this.drawingLayer.appendChild(newEl);
+    return newId;
   }
 
   // ---- Clipboard ----
-  private clipboard: { markup: string; type: ShapeData['type']; style: ShapeStyle; rotation?: number; symbolId?: string } | null = null;
+  private clipboard: ClipboardEntry[] = [];
   private pasteOffset = 0;
 
-  copyShape(id: string): void {
-    const shape = this.shapes.find(s => s.id === id);
-    if (!shape) return;
-    this.clipboard = {
+  private snapshotShape(shape: ShapeData): ClipboardEntry {
+    return {
       markup: shape.element.outerHTML,
       type: shape.type,
       style: { ...shape.style },
       rotation: shape.rotation,
       symbolId: shape.symbolId,
     };
-    this.pasteOffset = 0;
+  }
 
-    // Also write SVG to system clipboard for cross-app paste
-    const svgWrapper = `<svg xmlns="http://www.w3.org/2000/svg">${shape.element.outerHTML}</svg>`;
+  /** Replace the clipboard and mirror it to the system clipboard for cross-app paste. */
+  private setClipboard(entries: ClipboardEntry[]): void {
+    this.clipboard = entries;
+    this.pasteOffset = 0;
+    const markup = entries.map(e => e.markup).join('');
+    const svgWrapper = `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
     navigator.clipboard?.writeText(svgWrapper).catch(() => { /* ignore */ });
+  }
+
+  copyShape(id: string): void {
+    const shape = this.shapes.find(s => s.id === id);
+    if (!shape) return;
+    this.setClipboard([this.snapshotShape(shape)]);
+  }
+
+  /**
+   * Copy the whole current selection (in selection order). Resolves top-level
+   * shapes only, matching removeSelected so cut copies exactly what it deletes.
+   */
+  copySelected(): void {
+    const shapes = this.selectedShapeIds
+      .map(id => this.shapes.find(s => s.id === id) ?? null)
+      .filter((s): s is ShapeData => s !== null);
+    if (shapes.length === 0) return;
+    this.setClipboard(shapes.map(s => this.snapshotShape(s)));
   }
 
   cutShape(id: string): void {
@@ -308,44 +439,62 @@ export class AppState {
     this.removeShape(id);
   }
 
-  pasteClipboard(): void {
-    if (!this.clipboard) return;
-    this.pasteOffset += 10;
+  cutSelected(): void {
+    this.copySelected();
+    this.removeSelected();
+  }
 
+  /** Paste the internal clipboard. Returns true if anything was pasted. */
+  pasteClipboard(): boolean {
+    if (this.clipboard.length === 0) return false;
+    this.pasteOffset += 10;
+    const newIds: string[] = [];
+    for (const entry of this.clipboard) {
+      const id = this.insertClipboardEntry(entry, this.pasteOffset);
+      if (id) newIds.push(id);
+    }
+    if (newIds.length === 0) return false;
+    this.selectedShapeIds = newIds;
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
+  /** Materialize one clipboard entry into the drawing layer; returns the new id. */
+  private insertClipboardEntry(entry: ClipboardEntry, offset: number): string | null {
     const parser = new DOMParser();
     const doc = parser.parseFromString(
-      `<svg xmlns="http://www.w3.org/2000/svg">${this.clipboard.markup}</svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg">${entry.markup}</svg>`,
       'image/svg+xml'
     );
-    const srcEl = doc.querySelector('svg')!.firstElementChild as SVGElement;
-    if (!srcEl) return;
+    const srcEl = doc.querySelector('svg')?.firstElementChild as SVGElement | null;
+    if (!srcEl) return null;
 
     const newEl = document.importNode(srcEl, true) as SVGElement;
     const newId = this.nextId();
     newEl.id = newId;
-    const name = `${this.clipboard.type} ${newId.replace('shape-', '#')}`;
+    const name = `${entry.type} ${newId.replace('shape-', '#')}`;
     newEl.setAttribute('data-name', name);
 
-    // Offset the pasted element so it doesn't land exactly on top
-    this.offsetElement(newEl, this.pasteOffset, this.pasteOffset);
+    // Offset so the paste doesn't land exactly on top of the original.
+    this.offsetElement(newEl, offset, offset);
 
-    // For 'use' type, fix up the id but keep href
-    if (this.clipboard.type === 'group') {
-  
-      this.reIdGroupChildren(newEl);
-    }
+    // Re-id nested children so a pasted group doesn't collide with the source.
+    if (entry.type === 'group') this.reIdGroupChildren(newEl);
 
-    this.addShape({
+    this.shapes.push({
       id: newId,
-      type: this.clipboard.type,
+      type: entry.type,
       element: newEl,
       name,
-      style: { ...this.clipboard.style },
+      style: { ...entry.style },
       visible: true,
       locked: false,
-      rotation: this.clipboard.rotation,
-      symbolId: this.clipboard.symbolId,
+      rotation: entry.rotation,
+      symbolId: entry.symbolId,
     });
+    this.drawingLayer.appendChild(newEl);
+    return newId;
   }
 
   /** Try to paste SVG content from the system clipboard */

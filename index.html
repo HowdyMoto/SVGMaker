@@ -23,71 +23,71 @@
         <div class="menu-dropdown" data-menu="file">
           <span class="menu-trigger">File</span>
           <div class="menu-panel">
-            <button data-action="new">New <span class="shortcut">Ctrl+N</span></button>
-            <button data-action="open-project">Open... <span class="shortcut">Ctrl+O</span></button>
+            <button data-action="file.new">New</button>
+            <button data-action="file.open">Open...</button>
             <div class="menu-divider"></div>
             <div class="menu-section-label">Recent Files</div>
             <div id="recent-files-list" class="menu-recent"></div>
             <div class="menu-divider"></div>
-            <button data-action="save-project">Save <span class="shortcut">Ctrl+S</span></button>
-            <button data-action="save-project-as">Save As...</button>
+            <button data-action="file.save">Save</button>
+            <button data-action="file.save-as">Save As...</button>
             <div class="menu-divider"></div>
-            <button data-action="import">Import SVG... (merge into document)</button>
-            <button data-action="import-image">Import Image (PNG/JPG) to trace...</button>
-            <button data-action="export">Export Active Artboard (clean SVG)... <span class="shortcut">Ctrl+Shift+S</span></button>
-            <button data-action="export-all">Export Artboards... <span class="shortcut">Ctrl+Alt+E</span></button>
-            <button data-action="export-track">Export for TraceCraft (single baked path)...</button>
+            <button data-action="file.import-svg">Import SVG... (merge into document)</button>
+            <button data-action="file.import-image">Import Image (PNG/JPG) to trace...</button>
+            <button data-action="file.export-svg">Export Active Artboard (clean SVG)...</button>
+            <button data-action="file.export-artboards">Export Artboards...</button>
+            <button data-action="file.export-tracecraft">Export for TraceCraft (single baked path)...</button>
           </div>
         </div>
         <div class="menu-dropdown" data-menu="edit">
           <span class="menu-trigger">Edit</span>
           <div class="menu-panel">
-            <button data-action="undo">Undo <span class="shortcut">Ctrl+Z</span></button>
-            <button data-action="redo">Redo <span class="shortcut">Ctrl+Shift+Z</span></button>
+            <button data-action="edit.undo">Undo</button>
+            <button data-action="edit.redo">Redo</button>
             <div class="menu-divider"></div>
-            <button data-action="cut">Cut <span class="shortcut">Ctrl+X</span></button>
-            <button data-action="copy">Copy <span class="shortcut">Ctrl+C</span></button>
-            <button data-action="paste">Paste <span class="shortcut">Ctrl+V</span></button>
+            <button data-action="edit.cut">Cut</button>
+            <button data-action="edit.copy">Copy</button>
+            <button data-action="edit.paste">Paste</button>
             <div class="menu-divider"></div>
-            <button data-action="duplicate">Duplicate <span class="shortcut">Ctrl+D</span></button>
-            <button data-action="delete">Delete <span class="shortcut">Del</span></button>
+            <button data-action="edit.duplicate">Duplicate</button>
+            <button data-action="edit.delete">Delete</button>
             <div class="menu-divider"></div>
-            <button data-action="select-all">Select All <span class="shortcut">Ctrl+A</span></button>
-            <button data-action="deselect">Deselect <span class="shortcut">Ctrl+Shift+A</span></button>
+            <button data-action="edit.select-all">Select All</button>
+            <button data-action="edit.deselect">Deselect</button>
           </div>
         </div>
         <div class="menu-dropdown" data-menu="object">
           <span class="menu-trigger">Object</span>
           <div class="menu-panel">
-            <button data-action="group">Group <span class="shortcut">Ctrl+G</span></button>
-            <button data-action="ungroup">Ungroup <span class="shortcut">Ctrl+Shift+G</span></button>
+            <button data-action="object.group">Group</button>
+            <button data-action="object.ungroup">Ungroup</button>
             <div class="menu-divider"></div>
-            <button data-action="create-symbol">Create Symbol</button>
-            <button data-action="detach-symbol">Detach Instance</button>
+            <button data-action="object.create-symbol">Create Symbol</button>
+            <button data-action="object.detach-symbol">Detach Instance</button>
             <div class="menu-divider"></div>
-            <button data-action="bring-front">Bring to Front <span class="shortcut">Ctrl+Shift+]</span></button>
-            <button data-action="bring-forward">Bring Forward <span class="shortcut">Ctrl+]</span></button>
-            <button data-action="send-backward">Send Backward <span class="shortcut">Ctrl+[</span></button>
-            <button data-action="send-back">Send to Back <span class="shortcut">Ctrl+Shift+[</span></button>
+            <button data-action="object.bring-to-front">Bring to Front</button>
+            <button data-action="object.bring-forward">Bring Forward</button>
+            <button data-action="object.send-backward">Send Backward</button>
+            <button data-action="object.send-to-back">Send to Back</button>
             <div class="menu-divider"></div>
-            <button data-action="lock">Lock <span class="shortcut">Ctrl+2</span></button>
-            <button data-action="unlock-all">Unlock All <span class="shortcut">Ctrl+Alt+2</span></button>
+            <button data-action="object.toggle-lock">Lock</button>
+            <button data-action="object.unlock-all">Unlock All</button>
             <div class="menu-divider"></div>
-            <button data-action="hide">Hide <span class="shortcut">Ctrl+3</span></button>
-            <button data-action="show-all">Show All <span class="shortcut">Ctrl+Alt+3</span></button>
+            <button data-action="object.toggle-visibility">Hide</button>
+            <button data-action="object.show-all">Show All</button>
           </div>
         </div>
         <div class="menu-dropdown" data-menu="view">
           <span class="menu-trigger">View</span>
           <div class="menu-panel">
-            <button data-action="zoom-in">Zoom In <span class="shortcut">Ctrl+=</span></button>
-            <button data-action="zoom-out">Zoom Out <span class="shortcut">Ctrl+-</span></button>
-            <button data-action="zoom-fit">Fit Artboard <span class="shortcut">Ctrl+0</span></button>
-            <button data-action="zoom-100">Actual Size <span class="shortcut">Ctrl+1</span></button>
+            <button data-action="view.zoom-in">Zoom In</button>
+            <button data-action="view.zoom-out">Zoom Out</button>
+            <button data-action="view.zoom-fit">Fit Artboard</button>
+            <button data-action="view.zoom-100">Actual Size</button>
             <div class="menu-divider"></div>
-            <button data-action="toggle-transparency">Show Transparency</button>
-            <button data-action="toggle-grid">Show Grid <span class="shortcut">Ctrl+'</span></button>
-            <button data-action="toggle-rulers">Show Rulers <span class="shortcut">Ctrl+R</span></button>
+            <button data-action="view.toggle-transparency">Show Transparency</button>
+            <button data-action="view.toggle-grid">Show Grid</button>
+            <button data-action="view.toggle-rulers">Show Rulers</button>
           </div>
         </div>
       </nav>

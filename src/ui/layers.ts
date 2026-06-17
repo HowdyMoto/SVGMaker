@@ -1,5 +1,7 @@
 import type { AppState } from '../core/state';
 import type { ShapeData } from '../core/types';
+import type { CommandContext } from '../commands';
+import { runCommand } from '../commands';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
 
 export function updateLayersPanel(state: AppState): void {
@@ -167,22 +169,27 @@ function getShapeIcon(type: string): string {
   }
 }
 
-export function setupLayerButtons(state: AppState): void {
+export function setupLayerButtons(ctx: CommandContext): void {
+  const state = ctx.state;
   document.getElementById('btn-layer-add')?.addEventListener('click', (e) => {
     e.stopPropagation();
     state.activePanel = 'layers';
     state.addEmptyGroup();
   });
   document.getElementById('btn-layer-up')!.addEventListener('click', () => {
-    if (state.selectedShapeId) state.moveShapeUp(state.selectedShapeId);
+    state.activePanel = 'layers';
+    runCommand('object.bring-forward', ctx);
   });
   document.getElementById('btn-layer-down')!.addEventListener('click', () => {
-    if (state.selectedShapeId) state.moveShapeDown(state.selectedShapeId);
+    state.activePanel = 'layers';
+    runCommand('object.send-backward', ctx);
   });
   document.getElementById('btn-layer-duplicate')!.addEventListener('click', () => {
-    if (state.selectedShapeId) state.duplicateShape(state.selectedShapeId);
+    state.activePanel = 'layers';
+    runCommand('edit.duplicate', ctx);
   });
   document.getElementById('btn-layer-delete')!.addEventListener('click', () => {
-    if (state.selectedShapeId) state.removeShape(state.selectedShapeId);
+    state.activePanel = 'layers';
+    runCommand('edit.delete', ctx);
   });
 }

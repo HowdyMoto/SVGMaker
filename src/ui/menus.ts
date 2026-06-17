@@ -1,11 +1,7 @@
-import type { AppState } from '../core/state';
-import { exportSVG, importSVG } from './export';
-import { showExportDialog } from './export-dialog';
-import { exportTrack } from './export-track';
-import { pickAndImportImage } from './import-image';
-import { saveProject, saveProjectAs, openProject, resetProjectFile, confirmDiscard } from './project-file';
+import type { CommandContext } from '../commands';
+import { getCommand, runCommand, isEnabled, isChecked, primaryAccelerator } from '../commands';
 
-export function setupMenus(state: AppState): void {
+export function setupMenus(ctx: CommandContext): void {
   const dropdowns = document.querySelectorAll('.menu-dropdown');
 
   dropdowns.forEach(dd => {
@@ -14,12 +10,16 @@ export function setupMenus(state: AppState): void {
       e.preventDefault();
       const isOpen = dd.classList.contains('open');
       closeAllMenus();
-      if (!isOpen) dd.classList.add('open');
+      if (!isOpen) {
+        refreshMenuItems(ctx);
+        dd.classList.add('open');
+      }
     });
     trigger.addEventListener('mouseenter', () => {
       const anyOpen = document.querySelector('.menu-dropdown.open');
       if (anyOpen && anyOpen !== dd) {
         closeAllMenus();
+        refreshMenuItems(ctx);
         dd.classList.add('open');
       }
     });
@@ -31,115 +31,46 @@ export function setupMenus(state: AppState): void {
     }
   });
 
-  document.querySelectorAll('.menu-panel button[data-action]').forEach(btn => {
+  // Wire every menu button to its command and stamp the accelerator hint from
+  // the registry (so the hint can never drift from the actual binding).
+  document.querySelectorAll<HTMLButtonElement>('.menu-panel button[data-action]').forEach(btn => {
+    const id = btn.getAttribute('data-action')!;
+    const cmd = getCommand(id);
+    if (!cmd) {
+      if (import.meta.env.DEV) console.warn(`[menus] no command registered for data-action="${id}"`);
+      return;
+    }
+
+    const accel = primaryAccelerator(cmd);
+    let span = btn.querySelector('.shortcut');
+    if (accel) {
+      if (!span) {
+        span = document.createElement('span');
+        span.className = 'shortcut';
+        btn.appendChild(span);
+      }
+      span.textContent = accel;
+    } else if (span) {
+      span.remove();
+    }
+
     btn.addEventListener('click', () => {
-      const action = btn.getAttribute('data-action')!;
       closeAllMenus();
-      handleMenuAction(action, state);
+      runCommand(id, ctx);
     });
+  });
+}
+
+/** Reflect each item's current enabled state and (for toggles) checked state. */
+function refreshMenuItems(ctx: CommandContext): void {
+  document.querySelectorAll<HTMLButtonElement>('.menu-panel button[data-action]').forEach(btn => {
+    const cmd = getCommand(btn.getAttribute('data-action')!);
+    if (!cmd) return;
+    btn.classList.toggle('disabled', !isEnabled(cmd, ctx));
+    if (cmd.kind === 'toggle') btn.classList.toggle('checked', isChecked(cmd, ctx));
   });
 }
 
 function closeAllMenus(): void {
   document.querySelectorAll('.menu-dropdown').forEach(d => d.classList.remove('open'));
-}
-
-function handleMenuAction(action: string, state: AppState): void {
-  switch (action) {
-    case 'new': {
-      if (!confirmDiscard(state)) return;
-      state.clearAll();
-      resetProjectFile();
-      state.markClean();
-      break;
-    }
-    case 'open-project': openProject(state); break;
-    case 'save-project': saveProject(state); break;
-    case 'save-project-as': saveProjectAs(state); break;
-    case 'import': importSVG(state); break;
-    case 'import-image': pickAndImportImage(state); break;
-    case 'export': exportSVG(state); break;
-    case 'export-all': showExportDialog(state); break;
-    case 'export-track': exportTrack(state); break;
-    case 'undo': state.undo(); break;
-    case 'redo': state.redo(); break;
-    case 'cut':
-      if (state.selectedShapeId) state.cutShape(state.selectedShapeId);
-      break;
-    case 'copy':
-      if (state.selectedShapeId) state.copyShape(state.selectedShapeId);
-      break;
-    case 'paste':
-      state.pasteClipboard();
-      break;
-    case 'group':
-      state.groupSelectedShapes();
-      break;
-    case 'ungroup':
-      if (state.selectedShapeId) state.ungroupShape(state.selectedShapeId);
-      break;
-    case 'create-symbol':
-      if (state.selectedShapeId) state.createSymbolFromShape(state.selectedShapeId);
-      break;
-    case 'detach-symbol':
-      if (state.selectedShapeId) state.detachSymbolInstance(state.selectedShapeId);
-      break;
-    case 'duplicate':
-      if (state.selectedShapeId) state.duplicateShape(state.selectedShapeId);
-      break;
-    case 'delete':
-      if (state.selectedShapeId) state.removeShape(state.selectedShapeId);
-      break;
-    case 'select-all':
-      if (state.shapes.length > 0) {
-        state.selectMultiple(state.shapes.map(s => s.id));
-      }
-      break;
-    case 'deselect':
-      state.selectShape(null);
-      break;
-    case 'bring-forward':
-      if (state.selectedShapeId) state.moveShapeUp(state.selectedShapeId);
-      break;
-    case 'send-backward':
-      if (state.selectedShapeId) state.moveShapeDown(state.selectedShapeId);
-      break;
-    case 'lock':
-      if (state.selectedShapeId) state.toggleLock(state.selectedShapeId);
-      break;
-    case 'unlock-all':
-      state.shapes.forEach(s => { s.locked = false; });
-      state.onChange_public();
-      break;
-    case 'hide':
-      if (state.selectedShapeId) state.toggleVisibility(state.selectedShapeId);
-      break;
-    case 'show-all':
-      state.shapes.forEach(s => {
-        s.visible = true;
-        (s.element as SVGElement).style.display = '';
-      });
-      state.onChange_public();
-      break;
-    case 'toggle-transparency':
-      state.showTransparency = !state.showTransparency;
-      state.onChange_public();
-      break;
-    case 'toggle-grid': {
-      const grid = document.getElementById('artboard-grid')!;
-      grid.style.display = grid.style.display === 'none' ? '' : 'none';
-      state.onChange_public();
-      break;
-    }
-    case 'toggle-rulers': {
-      const rulerH = document.getElementById('ruler-h')!;
-      const rulerV = document.getElementById('ruler-v')!;
-      const corner = document.getElementById('ruler-corner')!;
-      const hidden = rulerH.classList.contains('hidden');
-      rulerH.classList.toggle('hidden', !hidden);
-      rulerV.classList.toggle('hidden', !hidden);
-      corner.classList.toggle('hidden', !hidden);
-      break;
-    }
-  }
 }
