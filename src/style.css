@@ -420,6 +420,19 @@ input, select, button { font-family: inherit; font-size: 12px; }
   background: var(--ai-btn);
 }
 
+/* Keyboard tool-switch feedback: a quick accent throb on the matching icon. */
+@keyframes tool-pulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 2px rgba(255, 255, 255, 1); color: #fff; }
+  18%  { transform: scale(1.32); box-shadow: 0 0 0 2px rgba(255, 255, 255, 1); color: #fff; }
+  100% { transform: scale(1);    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0); color: #fff; }
+}
+
+.tool-btn.pulse {
+  animation: tool-pulse 0.42s ease-out;
+  position: relative;
+  z-index: 1; /* let the glow sit above neighbours */
+}
+
 .tool-divider {
   width: 24px;
   height: 1px;

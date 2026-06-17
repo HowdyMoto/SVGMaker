@@ -132,6 +132,16 @@ function setTool(toolName: ToolName): void {
   document.getElementById('tool-label')!.textContent = toolLabels[toolName] || toolName;
 }
 
+/** Briefly throb a tool's toolbar icon — visual feedback for keyboard switches. */
+function pulseToolButton(toolName: ToolName): void {
+  const btn = document.querySelector(`.tool-btn[data-tool="${toolName}"]`) as HTMLElement | null;
+  if (!btn) return;
+  btn.classList.remove('pulse');
+  void btn.offsetWidth; // reflow so re-triggering restarts the animation
+  btn.classList.add('pulse');
+  btn.addEventListener('animationend', () => btn.classList.remove('pulse'), { once: true });
+}
+
 // Mouse events on canvas
 let isMouseDown = false;
 
@@ -208,6 +218,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
       spaceDown = true;
       prevToolBeforeSpace = state.currentTool;
       setTool('hand');
+      pulseToolButton('hand');
     }
     return;
   }
@@ -221,6 +232,8 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (isEnabled(cmd, commandCtx)) {
       e.preventDefault();
       cmd.run(commandCtx);
+      // Throb the matching toolbar icon for keyboard tool switches.
+      if (cmd.kind === 'tool') pulseToolButton(state.currentTool);
     }
     return;
   }
