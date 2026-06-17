@@ -30,6 +30,7 @@ import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from '
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
+import { createCommandPalette } from './ui/command-palette';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
 import type { CommandContext } from './commands';
@@ -88,8 +89,12 @@ const tools: Record<ToolName, Tool> = {
 let activeTool: Tool = tools.select;
 
 // Shared context handed to every command (menus, keyboard, panel buttons).
-// `setTool` and `getArtboardsBounds` are hoisted function declarations.
-const commandCtx: CommandContext = { state, canvas, setTool, getArtboardsBounds };
+// `setTool` and `getArtboardsBounds` are hoisted function declarations;
+// `openCommandPalette` is replaced with the real opener once the palette exists.
+const commandCtx: CommandContext = {
+  state, canvas, setTool, getArtboardsBounds,
+  openCommandPalette: () => { /* wired up after palette creation */ },
+};
 
 function getArtboardsBounds(): { x: number; y: number; w: number; h: number } {
   if (state.artboards.length === 0) return { x: 0, y: 0, w: 960, h: 540 };
@@ -258,6 +263,7 @@ setupColorPicker(state);
 setupAlign(state);
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
+commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 
 // Initial render
 const initBounds = getArtboardsBounds();

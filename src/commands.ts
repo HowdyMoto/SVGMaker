@@ -29,6 +29,8 @@ export interface CommandContext {
   canvas: CanvasController;
   setTool: (tool: ToolName) => void;
   getArtboardsBounds: () => { x: number; y: number; w: number; h: number };
+  /** Open the command palette. Wired up by main.ts after the palette exists. */
+  openCommandPalette: () => void;
 }
 
 export type CommandKind = 'action' | 'toggle' | 'tool';
@@ -54,6 +56,9 @@ const primary = (c: CommandContext) => c.state.getSelectedShape();
 // ---- The commands ----------------------------------------------------------
 
 export const COMMANDS: Command[] = [
+  // ---- App ----
+  { id: 'app.command-palette', label: 'Command Palette…', kind: 'action', accel: 'Mod+K', run: (c) => c.openCommandPalette() },
+
   // ---- File ----
   {
     id: 'file.new', label: 'New', kind: 'action', accel: 'Mod+N',

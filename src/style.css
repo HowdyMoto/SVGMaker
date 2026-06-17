@@ -158,6 +158,68 @@ input, select, button { font-family: inherit; font-size: 11px; }
   font-size: 11px;
 }
 
+/* ---- Command palette (Ctrl/Cmd+K) ---- */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 1000;
+}
+.cmdk-overlay[hidden] { display: none; }
+.cmdk-panel {
+  margin-top: 12vh;
+  width: 540px;
+  max-width: 90vw;
+  background: var(--ai-menu-bg);
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cmdk-input {
+  padding: 12px 14px;
+  font-size: 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--ai-border);
+  color: var(--ai-text-bright);
+  outline: none;
+}
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: default;
+  color: var(--ai-text);
+}
+.cmdk-item.active { background: var(--ai-accent); color: #fff; }
+.cmdk-item.disabled { opacity: 0.4; }
+.cmdk-cat {
+  min-width: 46px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ai-text-dim);
+}
+.cmdk-item.active .cmdk-cat { color: rgba(255, 255, 255, 0.7); }
+.cmdk-label { flex: 1; }
+.cmdk-accel { font-size: 10px; color: var(--ai-text-dim); }
+.cmdk-item.active .cmdk-accel { color: rgba(255, 255, 255, 0.7); }
+
 .menu-divider {
   height: 1px;
   background: var(--ai-border-light);
