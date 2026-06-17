@@ -1,13 +1,25 @@
 import type { AppState } from '../core/state';
 import { saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
 import { SVG_NS_DECLS } from '../core/svg-ns';
+import { bakeLayerContent } from '../core/bake';
 
 const SVG_PICKER_TYPES = [
   { description: 'SVG Image', accept: { 'image/svg+xml': ['.svg'] } },
 ];
 
 export async function exportSVG(state: AppState): Promise<void> {
-  const content = state.getDrawingLayerSVG();
+  let content = state.getDrawingLayerSVG();
+  if (state.bakeTransformsOnExport) {
+    const drawingLayer = document.getElementById('drawing-layer') as unknown as SVGGElement | null;
+    if (drawingLayer) {
+      const baked = bakeLayerContent(drawingLayer);
+      content = baked.content;
+      if (baked.warnings.length) {
+        alert('Exported with transforms baked into geometry.\n\nThese could not be baked and kept a transform:\n• '
+          + baked.warnings.join('\n• '));
+      }
+    }
+  }
   const ab = state.artboard;
   const svgString = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">

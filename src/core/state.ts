@@ -60,6 +60,15 @@ export class AppState {
   strokeNone = false;
   showTransparency = true; // checkerboard background on by default
 
+  /**
+   * When true, "Export Active Artboard" bakes element transforms into geometry
+   * so the SVG contains no transform attributes (for consumers that ignore
+   * them, e.g. TraceCraft). Persisted across sessions; on by default.
+   */
+  bakeTransformsOnExport = (() => {
+    try { return localStorage.getItem('svgmaker.bakeTransforms') !== 'false'; } catch { return true; }
+  })();
+
   symbols: SymbolDef[] = [];
   private symbolCounter = 0;
   private defsElement: SVGDefsElement | null = null;
@@ -167,12 +176,30 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  /** Find a shape and the array that directly contains it (handles nesting). */
+  private locateShape(id: string, list: ShapeData[] = this.shapes): { shape: ShapeData; siblings: ShapeData[] } | null {
+    for (const s of list) {
+      if (s.id === id) return { shape: s, siblings: list };
+      if (s.children) {
+        const found = this.locateShape(id, s.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  /** Remove a shape (top-level or nested inside a group) from model + DOM. */
+  private detachShape(id: string): boolean {
+    const loc = this.locateShape(id);
+    if (!loc) return false;
+    loc.shape.element.remove();
+    const i = loc.siblings.indexOf(loc.shape);
+    if (i >= 0) loc.siblings.splice(i, 1);
+    return true;
+  }
+
   removeShape(id: string): void {
-    const idx = this.shapes.findIndex(s => s.id === id);
-    if (idx === -1) return;
-    const shape = this.shapes[idx];
-    shape.element.remove();
-    this.shapes.splice(idx, 1);
+    if (!this.detachShape(id)) return;
     this.selectedShapeIds = this.selectedShapeIds.filter(sid => sid !== id);
     this.saveHistory();
     this.onChangeCallback();
@@ -181,12 +208,7 @@ export class AppState {
   /** Remove the entire current selection in a single undo step. */
   removeSelected(): void {
     if (this.selectedShapeIds.length === 0) return;
-    for (const id of [...this.selectedShapeIds]) {
-      const idx = this.shapes.findIndex(s => s.id === id);
-      if (idx === -1) continue;
-      this.shapes[idx].element.remove();
-      this.shapes.splice(idx, 1);
-    }
+    for (const id of [...this.selectedShapeIds]) this.detachShape(id);
     this.selectedShapeIds = [];
     this.saveHistory();
     this.onChangeCallback();
@@ -194,7 +216,7 @@ export class AppState {
 
   getSelectedShape(): ShapeData | null {
     if (!this.selectedShapeId) return null;
-    return this.shapes.find(s => s.id === this.selectedShapeId) ?? null;
+    return this.findShapeById(this.selectedShapeId);
   }
 
   selectShape(id: string | null): void {
@@ -424,12 +446,12 @@ export class AppState {
   }
 
   /**
-   * Copy the whole current selection (in selection order). Resolves top-level
-   * shapes only, matching removeSelected so cut copies exactly what it deletes.
+   * Copy the whole current selection (in selection order), resolving nested
+   * shapes too so cut copies exactly what removeSelected deletes.
    */
   copySelected(): void {
     const shapes = this.selectedShapeIds
-      .map(id => this.shapes.find(s => s.id === id) ?? null)
+      .map(id => this.findShapeById(id))
       .filter((s): s is ShapeData => s !== null);
     if (shapes.length === 0) return;
     this.setClipboard(shapes.map(s => this.snapshotShape(s)));

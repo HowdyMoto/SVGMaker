@@ -353,6 +353,25 @@ export function deleteAnchor(sp: SubPath, i: number): void {
 }
 
 /**
+ * Apply an affine matrix to every coordinate of a path's `d` (anchors and
+ * bezier control points), returning a new `d`. Béziers are affine-invariant,
+ * so this is exact — no resampling. Used to bake an element's transform into
+ * its geometry on export.
+ */
+export function transformPathData(d: string, m: DOMMatrix): string {
+  const model = parsePath(d);
+  const tx = (x: number, y: number) => ({ x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f });
+  for (const sp of model.subpaths) {
+    for (const a of sp.anchors) {
+      const p = tx(a.x, a.y); a.x = p.x; a.y = p.y;
+      if (a.inX !== undefined) { const q = tx(a.inX, a.inY!); a.inX = q.x; a.inY = q.y; }
+      if (a.outX !== undefined) { const q = tx(a.outX, a.outY!); a.outX = q.x; a.outY = q.y; }
+    }
+  }
+  return serializePath(model);
+}
+
+/**
  * Scale every coordinate of a path's `d` by (sx, sy) about the fixed point
  * (fx, fy), returning a new `d`. Used by the Select tool to resize paths while
  * keeping their geometry baked into `d` (so node editing stays clean).

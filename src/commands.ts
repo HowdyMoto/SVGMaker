@@ -80,6 +80,14 @@ export const COMMANDS: Command[] = [
   },
   { id: 'file.export-artboards', label: 'Export Artboards…', kind: 'action', accel: 'Mod+Alt+E', run: (c) => showExportDialog(c.state) },
   { id: 'file.export-tracecraft', label: 'Export for TraceCraft…', kind: 'action', run: (c) => exportTrack(c.state) },
+  {
+    id: 'export.bake-transforms', label: 'Bake Transforms on Export', kind: 'toggle',
+    checked: (c) => c.state.bakeTransformsOnExport,
+    run: (c) => {
+      c.state.bakeTransformsOnExport = !c.state.bakeTransformsOnExport;
+      try { localStorage.setItem('svgmaker.bakeTransforms', String(c.state.bakeTransformsOnExport)); } catch { /* ignore */ }
+    },
+  },
 
   // ---- Edit ----
   { id: 'edit.undo', label: 'Undo', kind: 'action', accel: 'Mod+Z', enabled: (c) => c.state.canUndo, run: (c) => { c.state.undo(); } },
