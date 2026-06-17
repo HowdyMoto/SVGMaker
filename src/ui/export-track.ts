@@ -152,6 +152,23 @@ function bakePath(d: string, m: DOMMatrix): string {
   return out.join(' ');
 }
 
+/**
+ * Definition of done: the file TraceCraft reads must contain ZERO transforms,
+ * exactly one <path>, and a viewBox — all orientation baked into the path
+ * numbers. This guard fails loudly rather than ever shipping a broken file.
+ */
+function assertTraceCraftSafe(svg: string): void {
+  if (/\btransform\s*=/.test(svg)) {
+    throw new Error('Export aborted: the output still contains a transform attribute. Orientation must be baked into the path coordinates.');
+  }
+  if ((svg.match(/<path[\s/>]/g) || []).length !== 1) {
+    throw new Error('Export aborted: expected exactly one <path> in the output.');
+  }
+  if (!/\bviewBox\s*=/.test(svg)) {
+    throw new Error('Export aborted: the output is missing a viewBox.');
+  }
+}
+
 /** Exact bounding box of a path `d` string via an offscreen element. */
 function measureBBox(d: string): DOMRect | null {
   const NS = 'http://www.w3.org/2000/svg';
@@ -224,6 +241,14 @@ export async function exportTrack(state: AppState): Promise<void> {
   <path d="${combined}"/>
 </svg>
 `;
+
+  // Self-check: never ship a file with a transform / multiple paths / no viewBox.
+  try {
+    assertTraceCraftSafe(svg);
+  } catch (err) {
+    alert((err instanceof Error ? err.message : String(err)) + '\n\nThis is a bug — please report it.');
+    return;
+  }
 
   // 4) Save.
   const base = (state.artboard?.name || 'track').trim().replace(/\s+/g, '-').toLowerCase() || 'track';
