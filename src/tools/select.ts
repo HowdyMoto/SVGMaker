@@ -1,6 +1,7 @@
 import { BaseTool } from './base';
 import type { Point, ShapeData } from '../core/types';
 import { scalePathData } from '../core/path-model';
+import { nudgeTranslate, setRotation, getRotation } from '../core/transform';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -314,20 +315,11 @@ export class SelectTool extends BaseTool {
   /** Move element by dx,dy in parent coordinate space. Works correctly for rotated elements. */
   private translateElement(el: SVGElement, dx: number, dy: number): void {
     const tag = el.tagName.toLowerCase();
-    const hasRotation = (el.getAttribute('transform') ?? '').includes('rotate(');
 
-    // For rotated elements (or groups/paths that already use transform), adjust translate in transform
-    if (hasRotation || tag === 'g' || tag === 'path') {
-      const existing = el.getAttribute('transform') ?? '';
-      const match = existing.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
-      if (match) {
-        const newTx = parseFloat(match[1]) + dx;
-        const newTy = parseFloat(match[2]) + dy;
-        el.setAttribute('transform', existing.replace(/translate\(([-\d.]+),\s*([-\d.]+)\)/, `translate(${newTx}, ${newTy})`));
-      } else {
-        // Prepend translate before rotate so it applies in parent space
-        el.setAttribute('transform', `translate(${dx}, ${dy}) ${existing}`.trim());
-      }
+    // Rotated elements (and groups/paths) move via the typed transform list so
+    // any existing rotate/matrix is preserved and composed correctly.
+    if (getRotation(el) !== 0 || tag === 'g' || tag === 'path') {
+      nudgeTranslate(el, dx, dy);
       return;
     }
 
@@ -502,20 +494,8 @@ export class SelectTool extends BaseTool {
 
   private applyRotation(shape: { element: SVGElement; rotation?: number }): void {
     const el = shape.element;
-    const rotation = shape.rotation ?? 0;
     const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
-    let transform = el.getAttribute('transform') ?? '';
-    transform = transform.replace(/rotate\([^)]*\)\s*/g, '').trim();
-    if (rotation !== 0) {
-      transform = `rotate(${rotation}, ${cx}, ${cy})` + (transform ? ' ' + transform : '');
-    }
-    if (transform) {
-      el.setAttribute('transform', transform);
-    } else {
-      el.removeAttribute('transform');
-    }
+    setRotation(el, shape.rotation ?? 0, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
   }
 
   private applyResize(el: SVGElement, _type: string, origBBox: DOMRect, dx: number, dy: number, handle: string): void {

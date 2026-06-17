@@ -40,15 +40,20 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-  font-size: 11px;
+  /* OS-native UI fonts: hinted for small sizes, so they stay crisp at 10-12px
+     better than any bundled webfont. Segoe UI (Win) / SF (mac) / Roboto. */
+  font-family: system-ui, 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
   background: var(--ai-bg);
   color: var(--ai-text);
   user-select: none;
   -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-input, select, button { font-family: inherit; font-size: 11px; }
+input, select, button { font-family: inherit; font-size: 12px; }
 
 #app {
   display: flex;
@@ -76,7 +81,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .project-name {
   margin-left: 12px;
   color: var(--ai-text-dim);
-  font-size: 11px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -136,7 +141,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .menu-panel button .shortcut {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   margin-left: 30px;
 }
 
@@ -155,7 +160,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   content: '\2713';
   position: absolute;
   left: 7px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ---- Command palette (Ctrl/Cmd+K) ---- */
@@ -183,7 +188,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 .cmdk-input {
   padding: 12px 14px;
-  font-size: 14px;
+  font-size: 15px;
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--ai-border);
@@ -210,14 +215,14 @@ input, select, button { font-family: inherit; font-size: 11px; }
 .cmdk-item.disabled { opacity: 0.4; }
 .cmdk-cat {
   min-width: 46px;
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--ai-text-dim);
 }
 .cmdk-item.active .cmdk-cat { color: rgba(255, 255, 255, 0.7); }
 .cmdk-label { flex: 1; }
-.cmdk-accel { font-size: 10px; color: var(--ai-text-dim); }
+.cmdk-accel { font-size: 11px; color: var(--ai-text-dim); }
 .cmdk-item.active .cmdk-accel { color: rgba(255, 255, 255, 0.7); }
 
 .menu-divider {
@@ -228,7 +233,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .menu-section-label {
   padding: 2px 20px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -236,7 +241,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .menu-recent button {
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 20px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -281,7 +286,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .ctrl-group label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   min-width: 12px;
 }
 
@@ -326,7 +331,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -353,7 +358,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .ctrl-unit {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* ============ WORKSPACE ============ */
@@ -490,7 +495,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -595,7 +600,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .panel-header span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--ai-text-bright);
   text-transform: uppercase;
@@ -608,7 +613,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: none;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
   padding: 0 4px;
 }
@@ -622,7 +627,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: none;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 9px;
   padding: 2px;
 }
 
@@ -663,7 +668,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .panel-field label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   min-width: 14px;
   flex-shrink: 0;
 }
@@ -683,7 +688,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .panel-hint {
   color: var(--ai-text-dim);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .panel-field input:focus,
@@ -712,7 +717,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .appearance-label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   min-width: 44px;
 }
 
@@ -724,7 +729,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: none;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 7px;
+  font-size: 8px;
   padding: 0;
   margin-left: auto;
   flex-shrink: 0;
@@ -763,7 +768,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .stroke-detail-row label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   min-width: 34px;
   flex-shrink: 0;
 }
@@ -777,7 +782,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: 1px solid var(--ai-border-light);
   border-radius: 2px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 11px;
   min-width: 0;
 }
 
@@ -818,7 +823,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 3px;
   color: var(--ai-text);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 0;
   flex-shrink: 0;
@@ -873,7 +878,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .appearance-unit {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .appearance-slider {
@@ -885,7 +890,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .appearance-pct {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   min-width: 28px;
   text-align: right;
 }
@@ -928,7 +933,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .panel-field input[type="text"] {
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Color panel */
@@ -946,7 +951,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .color-slider-row label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   width: 12px;
   font-weight: 600;
 }
@@ -977,7 +982,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .color-hex-row label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .color-hex-row input {
@@ -989,7 +994,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   padding: 0 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
@@ -1109,7 +1114,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   padding: 3px 8px;
   cursor: default;
   border-bottom: 1px solid var(--ai-border);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .layer-item:hover {
@@ -1128,7 +1133,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ai-text-dim);
   flex-shrink: 0;
 }
@@ -1180,7 +1185,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: 1px solid var(--ai-accent);
   border-radius: 2px;
   padding: 1px 4px;
-  font-size: 11px;
+  font-size: 12px;
   outline: none;
 }
 
@@ -1201,7 +1206,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .ab-prop label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   width: 10px;
   flex-shrink: 0;
 }
@@ -1214,7 +1219,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: 1px solid var(--ai-border);
   border-radius: 2px;
   padding: 2px 3px;
-  font-size: 10px;
+  font-size: 11px;
   outline: none;
   -moz-appearance: textfield;
 }
@@ -1252,7 +1257,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text);
   text-align: left;
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 2px;
   cursor: pointer;
 }
@@ -1282,7 +1287,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   transition: background 0.1s;
 }
 
@@ -1301,7 +1306,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   justify-content: space-between;
   padding: 0 8px;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ai-text-dim);
 }
 
@@ -1321,7 +1326,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: 1px solid var(--ai-border-light);
   border-radius: 2px;
   padding: 0 2px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .status-btn {
@@ -1332,7 +1337,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   color: var(--ai-text-dim);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1387,7 +1392,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .cpicker-header {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ai-text-bright);
   margin-bottom: 8px;
@@ -1428,7 +1433,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .cpicker-hash {
   color: var(--ai-text-dim);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .cpicker-hex {
@@ -1440,7 +1445,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   padding: 0 6px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 
@@ -1458,7 +1463,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 
 .cpicker-slider-label {
   color: var(--ai-text-dim);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   width: 10px;
   flex-shrink: 0;
@@ -1479,7 +1484,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border-radius: 2px;
   padding: 0 3px;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
@@ -1516,7 +1521,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text-dim);
   border: none;
   padding: 4px 0;
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -1573,7 +1578,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ai-text-dim);
 }
 
@@ -1593,7 +1598,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text-dim);
   border-radius: 2px;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   padding: 2px 5px;
   margin-left: auto;
   transition: background 0.1s;
@@ -1608,7 +1613,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ai-text-dim);
 }
 .cpicker-dir-row label {
@@ -1623,7 +1628,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text);
   border: 1px solid var(--ai-border-light);
   border-radius: 2px;
-  font-size: 10px;
+  font-size: 11px;
   padding: 0 4px;
 }
 
@@ -1643,7 +1648,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 6px;
   transition: background 0.1s;
 }
@@ -1703,7 +1708,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
 /* Expand/collapse toggle arrow */
 .layer-group-toggle {
   cursor: pointer;
-  font-size: 8px;
+  font-size: 9px;
   width: 12px;
   text-align: center;
   flex-shrink: 0;
@@ -1718,7 +1723,7 @@ input, select, button { font-family: inherit; font-size: 11px; }
   color: var(--ai-text);
   border-radius: 3px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 5px;
   margin-left: auto;
   line-height: 16px;
@@ -1730,13 +1735,13 @@ input, select, button { font-family: inherit; font-size: 11px; }
 }
 
 .panel-unit {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ai-text-dim);
   margin-left: 2px;
 }
 
 .ctrl-unit {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ai-text-dim);
   margin-left: 1px;
   margin-right: 4px;

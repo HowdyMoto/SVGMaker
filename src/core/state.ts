@@ -2,6 +2,7 @@ import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef
 import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { PathEditSession } from './path-edit';
+import { nudgeTranslate, getRotation } from './transform';
 
 /** One copied shape, captured as serialized markup so paste is self-contained. */
 interface ClipboardEntry {
@@ -553,16 +554,7 @@ export class AppState {
       const newPoints = pairs.map(([px, py]) => `${px + dx},${py + dy}`).join(' ');
       el.setAttribute('points', newPoints);
     } else if (tag === 'path' || tag === 'g') {
-      // Use translate transform
-      const existing = el.getAttribute('transform') ?? '';
-      const match = existing.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
-      if (match) {
-        const newTx = parseFloat(match[1]) + dx;
-        const newTy = parseFloat(match[2]) + dy;
-        el.setAttribute('transform', existing.replace(/translate\(([-\d.]+),\s*([-\d.]+)\)/, `translate(${newTx}, ${newTy})`));
-      } else {
-        el.setAttribute('transform', (existing ? existing + ' ' : '') + `translate(${dx}, ${dy})`);
-      }
+      nudgeTranslate(el, dx, dy);
     }
   }
 
@@ -669,12 +661,9 @@ export class AppState {
         locked: el.getAttribute('data-locked') === 'true',
       };
 
-      // Parse rotation from transform attribute
-      const transform = el.getAttribute('transform') ?? '';
-      const rotMatch = transform.match(/rotate\(([-\d.]+)/);
-      if (rotMatch) {
-        shape.rotation = parseFloat(rotMatch[1]);
-      }
+      // Read rotation from the transform list (robust to matrix()/ordering).
+      const rot = getRotation(el);
+      if (rot) shape.rotation = rot;
 
       // Rebuild children for groups
       if (type === 'group') {

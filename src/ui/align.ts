@@ -1,4 +1,5 @@
 import type { AppState } from '../core/state';
+import { nudgeTranslate } from '../core/transform';
 
 export function setupAlign(state: AppState): void {
   document.querySelectorAll('.align-buttons button[data-align]').forEach(btn => {
@@ -50,12 +51,6 @@ function setPos(el: SVGElement, tag: string, x: number, y: number, bbox: DOMRect
     const newPoints = pairs.map(([px, py]) => `${px + dx},${py + dy}`).join(' ');
     el.setAttribute('points', newPoints);
   } else if (tag === 'path') {
-    const existing = el.getAttribute('transform') ?? '';
-    const match = existing.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
-    if (match) {
-      el.setAttribute('transform', `translate(${parseFloat(match[1]) + dx}, ${parseFloat(match[2]) + dy})`);
-    } else {
-      el.setAttribute('transform', `translate(${dx}, ${dy})`);
-    }
+    nudgeTranslate(el, dx, dy);
   }
 }

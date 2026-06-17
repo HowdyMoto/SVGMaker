@@ -1,4 +1,5 @@
 import type { AppState } from '../core/state';
+import { setRotation } from '../core/transform';
 
 /** Convert SVG fill/stroke values to CSS-renderable backgrounds for preview swatches */
 function paintPreviewBg(value: string, state: AppState): string {
@@ -166,22 +167,11 @@ export function setupProperties(state: AppState): void {
       el.setAttribute('y', String(y + h));
     }
 
-    // Apply rotation
+    // Apply rotation about the element's centre, preserving any translate.
     const rotation = parseFloat(propRotation.value) || 0;
     shape.rotation = rotation;
     const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
-    let transform = el.getAttribute('transform') ?? '';
-    transform = transform.replace(/rotate\([^)]*\)\s*/g, '').trim();
-    if (rotation !== 0) {
-      transform = `rotate(${rotation}, ${cx}, ${cy})` + (transform ? ' ' + transform : '');
-    }
-    if (transform) {
-      el.setAttribute('transform', transform);
-    } else {
-      el.removeAttribute('transform');
-    }
+    setRotation(el, rotation, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
 
     state.saveHistory();
     state.onChange_public();
