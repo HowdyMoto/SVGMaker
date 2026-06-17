@@ -114,7 +114,9 @@ export class PathEditSession {
         if (a.inX !== undefined) {
           const inLen = Math.hypot(a.x - a.inX, a.y - a.inY!) || Math.hypot(hx, hy);
           const m = Math.hypot(hx, hy) || 1;
-          a.inX = a.x + (hx / m) * inLen; a.inY = a.y + (hy / m) * inLen;
+          // Opposite side of the anchor (subtract), so the handles stay
+          // collinear-opposite and the point reads as a smooth curve.
+          a.inX = a.x - (hx / m) * inLen; a.inY = a.y - (hy / m) * inLen;
         }
       }
     } else {
