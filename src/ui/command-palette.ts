@@ -53,8 +53,9 @@ export function createCommandPalette(ctx: CommandContext): CommandPalette {
     const scored = candidates
       .map(c => ({ c, s: q ? score(c, q) : 0, en: isEnabled(c, ctx) }))
       .filter(x => x.s >= 0)
-      // Enabled first, then by match quality, then alphabetically.
-      .sort((a, b) => (Number(a.en ? 0 : 1) - Number(b.en ? 0 : 1)) || (a.s - b.s) || a.c.label.localeCompare(b.c.label));
+      // Match quality first (so "undo" surfaces Undo even while it's disabled),
+      // then enabled-before-disabled, then alphabetically.
+      .sort((a, b) => (a.s - b.s) || (a.en === b.en ? 0 : a.en ? -1 : 1) || a.c.label.localeCompare(b.c.label));
     filtered = scored.map(x => x.c);
     active = 0;
     render();
