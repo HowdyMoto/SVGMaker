@@ -30,7 +30,7 @@ import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { showExportDialog } from './ui/export-dialog';
-import { saveProject, openProject, openHandle, openTextWithoutHandle } from './ui/project-file';
+import { saveProject, openProject, openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
@@ -348,8 +348,7 @@ canvasArea.addEventListener('drop', (e) => {
 
   // Dropping a document (SVG or legacy project) opens it for editing.
   if (isSvg || isLegacy) {
-    if (state.shapes.length > 0 &&
-        !confirm(`Open "${file.name}" and replace the current document?`)) return;
+    if (!confirmDiscard(state)) return;
 
     // Prefer a writable handle so the dropped file can be saved in place.
     const item = e.dataTransfer?.items?.[0] as (DataTransferItem & {
@@ -394,6 +393,14 @@ window.addEventListener('resize', () => {
   drawRulers(canvas);
 });
 
+// Warn before closing/reloading the tab with unsaved changes.
+window.addEventListener('beforeunload', (e) => {
+  if (state.dirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 // Register the service worker for offline/PWA support. Production only, so it
 // never caches modules during dev (which would break HMR).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -410,7 +417,7 @@ const launchQueue = (window as unknown as {
 if (launchQueue) {
   launchQueue.setConsumer((params) => {
     const handle = params.files?.[0];
-    if (handle) {
+    if (handle && confirmDiscard(state)) {
       openHandle(state, handle).catch((err) => {
         alert('Failed to open file: ' + (err instanceof Error ? err.message : String(err)));
       });

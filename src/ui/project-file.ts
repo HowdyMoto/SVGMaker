@@ -38,6 +38,14 @@ export function resetProjectFile(): void {
   setProjectName(null);
 }
 
+/**
+ * Guard before any action that replaces the current document. Returns true if
+ * it's safe to proceed (no unsaved changes, or the user chose to discard them).
+ */
+export function confirmDiscard(state: AppState): boolean {
+  return !state.dirty || window.confirm('You have unsaved changes that will be lost. Continue?');
+}
+
 // ---------------------------------------------------------------------------
 // Editor metadata embedded inside the saved SVG (ignored by other tools).
 // ---------------------------------------------------------------------------
@@ -190,6 +198,7 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
 
   state.selectedArtboardId = null;
   state.saveHistory();
+  state.markClean();
   state.onChange_public();
 }
 
@@ -213,6 +222,7 @@ export async function saveProject(state: AppState): Promise<void> {
   if (currentHandle) {
     try {
       await writeHandle(currentHandle, svg);
+      state.markClean();
       await rememberRecentFile(currentHandle);
       return;
     } catch (err) {
@@ -236,6 +246,7 @@ export async function saveProjectAs(state: AppState): Promise<void> {
       await writeHandle(handle, svg);
       currentHandle = handle;
       setProjectName(handle.name);
+      state.markClean();
       await rememberRecentFile(handle);
       return;
     } catch (err) {
@@ -245,9 +256,11 @@ export async function saveProjectAs(state: AppState): Promise<void> {
   }
 
   downloadFile(`${base}${SVG_EXTENSION}`, svg, SVG_MIME);
+  state.markClean();
 }
 
 export async function openProject(state: AppState): Promise<void> {
+  if (!confirmDiscard(state)) return;
   if (supportsFileSystemAccess()) {
     try {
       const handle = await openFilePicker([
@@ -336,5 +349,6 @@ export function loadProject(state: AppState, json: string): void {
 
   state.selectedArtboardId = null;
   state.saveHistory();
+  state.markClean();
   state.onChange_public();
 }

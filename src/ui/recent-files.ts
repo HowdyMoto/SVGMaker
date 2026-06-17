@@ -1,5 +1,5 @@
 import type { AppState } from '../core/state';
-import { openHandle } from './project-file';
+import { openHandle, confirmDiscard } from './project-file';
 
 /**
  * Recent Files. File System Access handles are structured-cloneable, so we
@@ -90,6 +90,7 @@ async function refreshRecentMenu(): Promise<void> {
     btn.title = entry.name;
     btn.addEventListener('click', async () => {
       document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
+      if (!confirmDiscard(state)) return;
       try {
         const handle = entry.handle as FileSystemFileHandle & {
           queryPermission?: (d: { mode: string }) => Promise<PermissionState>;

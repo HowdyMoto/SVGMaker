@@ -18,6 +18,7 @@ export class AppState {
   private abCounter = 0;
   private history: HistoryEntry[] = [];
   private historyIndex = -1;
+  private savedHistoryIndex = 0; // history index matching the last save/open/new
   private maxHistory = 100;
   private drawingLayer: SVGGElement;
   private onChangeCallback: () => void;
@@ -70,6 +71,7 @@ export class AppState {
     });
     this.activeArtboardId = this.artboards[0].id;
     this.saveHistory();
+    this.markClean();
   }
 
   // Keep the legacy getter for backward compat with align, export, etc.
@@ -433,13 +435,22 @@ export class AppState {
       selectedId: this.selectedShapeId,
       artboardsJson: JSON.stringify(this.artboards),
     };
+    // Branching off before a saved-but-undone state discards that saved point.
+    if (this.savedHistoryIndex > this.historyIndex) this.savedHistoryIndex = -1;
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push(entry);
     if (this.history.length > this.maxHistory) {
       this.history.shift();
+      this.savedHistoryIndex--;
     }
     this.historyIndex = this.history.length - 1;
   }
+
+  /** True when there are edits since the last save/open/new. */
+  get dirty(): boolean { return this.historyIndex !== this.savedHistoryIndex; }
+
+  /** Mark the current state as the saved baseline (call after save/open/new). */
+  markClean(): void { this.savedHistoryIndex = this.historyIndex; }
 
   undo(): boolean {
     if (this.historyIndex <= 0) return false;

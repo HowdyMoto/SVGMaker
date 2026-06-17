@@ -3,7 +3,7 @@ import { exportSVG, importSVG } from './export';
 import { showExportDialog } from './export-dialog';
 import { exportTrack } from './export-track';
 import { pickAndImportImage } from './import-image';
-import { saveProject, saveProjectAs, openProject, resetProjectFile } from './project-file';
+import { saveProject, saveProjectAs, openProject, resetProjectFile, confirmDiscard } from './project-file';
 
 export function setupMenus(state: AppState): void {
   const dropdowns = document.querySelectorAll('.menu-dropdown');
@@ -47,9 +47,10 @@ function closeAllMenus(): void {
 function handleMenuAction(action: string, state: AppState): void {
   switch (action) {
     case 'new': {
-      if (state.shapes.length > 0 && !confirm('Clear canvas and start new?')) return;
+      if (!confirmDiscard(state)) return;
       state.clearAll();
       resetProjectFile();
+      state.markClean();
       break;
     }
     case 'open-project': openProject(state); break;
