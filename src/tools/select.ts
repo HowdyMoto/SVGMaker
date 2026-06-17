@@ -20,6 +20,9 @@ export class SelectTool extends BaseTool {
   // Original geometry (path `d` / poly `points`) captured at resize start, so
   // each mousemove scales from the original rather than compounding.
   private resizeOrigGeometry: string | null = null;
+  // Original `transform` captured at resize start, used to scale groups (which
+  // have no editable geometry) without compounding across mousemoves.
+  private resizeOrigTransform: string | null = null;
 
   // Rotation state
   private rotating = false;
@@ -78,6 +81,7 @@ export class SelectTool extends BaseTool {
       this.resizeHandle = handle;
       this.resizeStart = { ...pt };
       this.resizeOrigGeometry = null;
+      this.resizeOrigTransform = null;
       if (isMulti) {
         this.resizeOrigBBox = this.multiCombinedBBox!;
       } else {
@@ -86,6 +90,7 @@ export class SelectTool extends BaseTool {
         const tag = el.tagName.toLowerCase();
         if (tag === 'path') this.resizeOrigGeometry = el.getAttribute('d');
         else if (tag === 'polyline' || tag === 'polygon') this.resizeOrigGeometry = el.getAttribute('points');
+        else if (tag === 'g') this.resizeOrigTransform = el.getAttribute('transform');
       }
       return;
     }
@@ -210,6 +215,7 @@ export class SelectTool extends BaseTool {
       this.rotating = false;
       this.resizeOrigBBox = null;
       this.resizeOrigGeometry = null;
+      this.resizeOrigTransform = null;
     }
     this.canvas.endPan();
   }
@@ -530,6 +536,21 @@ export class SelectTool extends BaseTool {
         }).join(' ');
         el.setAttribute('points', pts);
       }
+      return;
+    }
+
+    // Groups have no editable geometry: scale them about the fixed corner via a
+    // transform composed in front of the group's original transform (captured
+    // once at start). Lets a group selected on the canvas be resized as a unit.
+    if (tag === 'g') {
+      const sx = origBBox.width !== 0 ? newW / origBBox.width : 1;
+      const sy = origBBox.height !== 0 ? newH / origBBox.height : 1;
+      const fx = handle.includes('w') ? origBBox.x + origBBox.width : origBBox.x;
+      const fy = handle.includes('n') ? origBBox.y + origBBox.height : origBBox.y;
+      const tx = fx * (1 - sx);
+      const ty = fy * (1 - sy);
+      const orig = this.resizeOrigTransform ? this.resizeOrigTransform + ' ' : '';
+      el.setAttribute('transform', `${orig}translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
       return;
     }
 
