@@ -77,9 +77,18 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
   const w = bbox.width;
   const h = bbox.height;
   const overlayGroup = document.createElementNS(NS, 'g');
-  const transform = shape.element.getAttribute('transform');
-  if (transform) {
-    overlayGroup.setAttribute('transform', transform);
+  if (shape.parentId) {
+    // Nested shape: position via the full transform from the element's local
+    // space to the selection layer, so ancestor group transforms are included.
+    const ref = selectionLayer.getScreenCTM();
+    const own = el.getScreenCTM();
+    if (ref && own) {
+      const m = ref.inverse().multiply(own);
+      overlayGroup.setAttribute('transform', `matrix(${m.a},${m.b},${m.c},${m.d},${m.e},${m.f})`);
+    }
+  } else {
+    const transform = shape.element.getAttribute('transform');
+    if (transform) overlayGroup.setAttribute('transform', transform);
   }
 
   // Blue bounding rect
