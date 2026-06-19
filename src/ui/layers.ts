@@ -28,8 +28,47 @@ function clearDropMarks(li: HTMLElement): void {
   li.classList.remove('drop-before', 'drop-after', 'drop-inside');
 }
 
+// Signature of everything the layer rows render EXCEPT selection. When it's
+// unchanged we can skip the full tree rebuild and just re-mark the selection.
+let lastLayersSig: string | null = null;
+
+function layersSignature(shapes: ShapeData[]): string {
+  let s = '';
+  const walk = (list: ShapeData[], depth: number) => {
+    for (const sh of list) {
+      const collapsed = sh.element.getAttribute('data-collapsed') === 'true' ? '1' : '0';
+      const kids = sh.children?.length ?? 0;
+      s += `${depth}:${sh.id}:${sh.type}:${sh.name}:${sh.visible ? 1 : 0}:${sh.locked ? 1 : 0}:${collapsed}:${kids};`;
+      if (kids) walk(sh.children!, depth + 1);
+    }
+  };
+  walk(shapes, 0);
+  return s;
+}
+
+/** Re-apply just the `.selected` class to existing rows (fast path). */
+function applyLayersSelection(list: HTMLElement, state: AppState): void {
+  const sel = new Set(state.selectedShapeIds);
+  if (state.selectedShapeId) sel.add(state.selectedShapeId);
+  list.querySelectorAll('li.layer-item').forEach((li) => {
+    const id = (li as HTMLElement).getAttribute('data-id');
+    li.classList.toggle('selected', !!id && sel.has(id));
+  });
+}
+
 export function updateLayersPanel(state: AppState): void {
   const list = document.getElementById('layers-list')!;
+
+  // Fast path: structure unchanged (only selection could differ) → skip the
+  // full innerHTML rebuild, which otherwise scales with total shape count and
+  // fires on every move/select. Selection isn't part of the signature.
+  const sig = layersSignature(state.shapes);
+  if (sig === lastLayersSig && list.childElementCount > 0) {
+    applyLayersSelection(list, state);
+    return;
+  }
+  lastLayersSig = sig;
+
   list.innerHTML = '';
 
   // Re-query the live name element by id so rename works even after re-renders.

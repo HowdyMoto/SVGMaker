@@ -257,6 +257,7 @@ export class AppState {
     const loc = this.locateShape(id);
     if (!loc) return false;
     loc.shape.element.remove();
+    this.shapeById.delete(id);
     const i = loc.siblings.indexOf(loc.shape);
     if (i >= 0) loc.siblings.splice(i, 1);
     return true;
@@ -308,6 +309,9 @@ export class AppState {
     if (!this.editingPathId && !this.pathEdit) return;
     this.editingPathId = null;
     this.pathEdit = null;
+    // Leaving node editing (incl. Escape mid-drag) ends any interactive gesture,
+    // so the side-panel render guard can't get stuck on.
+    this.interactive = false;
     if (notify) this.onChangeCallback();
   }
 
@@ -800,7 +804,10 @@ export class AppState {
   get canRedo(): boolean { return this.historyIndex < this.history.length - 1; }
 
   private restoreHistory(entry: HistoryEntry): void {
-    this.drawingLayer.innerHTML = entry.svgContent;
+    // History holds already-sanitized markup, but re-sanitize so the invariant
+    // "drawingLayer.innerHTML is never assigned unsanitized content" holds at
+    // every sink unconditionally (defense in depth; undo/redo isn't hot).
+    this.drawingLayer.innerHTML = sanitizeSvgMarkup(entry.svgContent);
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = entry.selectedId ? [entry.selectedId] : [];
     // Keep any node-editing session in sync with the restored geometry.
@@ -828,6 +835,7 @@ export class AppState {
 
   rebuildShapesFromDOM(): void {
     this.shapes = [];
+    this.shapeById.clear(); // shapes are rebuilt from scratch; drop stale cache
     const elements = this.drawingLayer.children;
     let maxId = 0;
 
@@ -962,12 +970,32 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  /**
+   * Fast id→shape lookup cache. Entries are validated on read (a removed shape's
+   * element is disconnected, a stale entry's id won't match) and refilled from a
+   * tree walk on miss, so the cache is always correct even if a mutation site
+   * forgets to update it — it only ever falls back to the old O(n) behavior.
+   */
+  private shapeById = new Map<string, ShapeData>();
+
   findShapeById(id: string, list?: ShapeData[]): ShapeData | null {
-    const shapes = list ?? this.shapes;
-    for (const s of shapes) {
+    // Caller-scoped searches (passing an explicit subtree) bypass the cache.
+    if (list) return this.walkFindShape(id, list);
+
+    const cached = this.shapeById.get(id);
+    if (cached && cached.id === id && cached.element.isConnected) return cached;
+
+    const found = this.walkFindShape(id, this.shapes);
+    if (found) this.shapeById.set(id, found);
+    else this.shapeById.delete(id);
+    return found;
+  }
+
+  private walkFindShape(id: string, list: ShapeData[]): ShapeData | null {
+    for (const s of list) {
       if (s.id === id) return s;
       if (s.children) {
-        const found = this.findShapeById(id, s.children);
+        const found = this.walkFindShape(id, s.children);
         if (found) return found;
       }
     }
@@ -1485,6 +1513,7 @@ export class AppState {
   }
 
   clearAll(): void {
+    this.shapeById.clear();
     this.drawingLayer.innerHTML = '';
     this.shapes = [];
     this.selectedShapeIds = [];

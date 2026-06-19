@@ -1,5 +1,31 @@
 import type { AppState } from '../core/state';
 import type { ExportFormat, Artboard } from '../core/types';
+import { bakeLayerContent } from '../core/bake';
+import { SVG_NS_DECLS } from '../core/svg-ns';
+import { supportsFileSystemAccess, saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
+
+/** Drawing-layer markup, with element transforms baked into geometry if asked. */
+function layerContent(state: AppState, bake: boolean): string {
+  if (!bake) return state.getDrawingLayerSVG();
+  const dl = document.getElementById('drawing-layer') as unknown as SVGGElement | null;
+  return dl ? bakeLayerContent(dl).content : state.getDrawingLayerSVG();
+}
+
+/** Export a single artboard straight to an .svg file (used by the panel's per-row button). */
+export async function exportArtboardToFile(state: AppState, ab: Artboard): Promise<void> {
+  const svgStr = buildArtboardSVG(ab, layerContent(state, state.bakeTransformsOnExport), state.getDefsBlock());
+  const filename = `${sanitizeFilename(ab.name)}.svg`;
+  if (supportsFileSystemAccess()) {
+    try {
+      const handle = await saveFilePicker(filename, [{ description: 'SVG Image', accept: { 'image/svg+xml': ['.svg'] } }]);
+      if (handle) await writeHandle(handle, svgStr);
+    } catch (err) {
+      alert('Export failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+    return;
+  }
+  downloadFile(filename, svgStr, 'image/svg+xml');
+}
 
 /**
  * Shows a modal dialog to export all artboards (or a selection) in SVG/PNG/JPG.
@@ -71,6 +97,20 @@ export function showExportDialog(state: AppState): void {
     scaleRow.style.display = formatSelect.value === 'svg' ? 'none' : '';
   });
 
+  // Bake transforms toggle
+  const bakeRow = document.createElement('label');
+  bakeRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:14px; cursor:pointer;';
+  const bakeCb = document.createElement('input');
+  bakeCb.type = 'checkbox';
+  bakeCb.checked = state.bakeTransformsOnExport;
+  bakeCb.style.cssText = 'accent-color:#2196F3;';
+  const bakeText = document.createElement('span');
+  bakeText.textContent = 'Bake transforms into geometry';
+  bakeText.title = 'Flatten rotation/scale/translate into coordinates (for tools that ignore transform attributes).';
+  bakeRow.appendChild(bakeCb);
+  bakeRow.appendChild(bakeText);
+  body.appendChild(bakeRow);
+
   // Artboard selection
   const abRow = document.createElement('div');
   abRow.style.cssText = 'margin-bottom:14px;';
@@ -131,6 +171,7 @@ export function showExportDialog(state: AppState): void {
   exportBtn.addEventListener('click', async () => {
     const format = formatSelect.value as ExportFormat;
     const scale = parseInt(scaleSelect.value);
+    const bake = bakeCb.checked;
     const selectedIds = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
     if (selectedIds.length === 0) { alert('Select at least one artboard.'); return; }
 
@@ -139,7 +180,7 @@ export function showExportDialog(state: AppState): void {
 
     const selectedAbs = state.artboards.filter(ab => selectedIds.includes(ab.id));
     try {
-      await exportArtboards(state, selectedAbs, format, scale);
+      await exportArtboards(state, selectedAbs, format, scale, bake);
     } catch (err) {
       alert('Export failed: ' + (err instanceof Error ? err.message : err));
     }
@@ -164,8 +205,9 @@ async function exportArtboards(
   artboards: Artboard[],
   format: ExportFormat,
   scale: number,
+  bake: boolean,
 ): Promise<void> {
-  const drawingSvg = state.getDrawingLayerSVG();
+  const drawingSvg = layerContent(state, bake);
   const defsBlock = state.getDefsBlock();
 
   for (const ab of artboards) {
@@ -190,7 +232,7 @@ async function exportArtboards(
 function buildArtboardSVG(ab: Artboard, drawingSvg: string, defsBlock: string): string {
   // Clip drawing content to the artboard bounds via a viewBox
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg"
+<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}
      viewBox="${ab.x} ${ab.y} ${ab.width} ${ab.height}"
      width="${ab.width}" height="${ab.height}">
   ${defsBlock}<rect x="${ab.x}" y="${ab.y}" width="${ab.width}" height="${ab.height}" fill="white"/>

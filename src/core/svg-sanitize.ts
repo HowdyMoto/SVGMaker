@@ -58,6 +58,15 @@ function sanitizeStyle(css: string): string {
 }
 
 /**
+ * Clean a `<style>` element's CSS text: the inline-style rules above plus
+ * `@import` (which can pull in external stylesheets). The element is kept so
+ * class-based styling on imported artwork still renders.
+ */
+function sanitizeStyleSheet(css: string): string {
+  return sanitizeStyle(css).replace(/@import[^;]*;?/gi, '');
+}
+
+/**
  * Sanitize a parsed SVG subtree in place: removes blocked descendants and
  * unsafe attributes from `el` and everything under it.
  */
@@ -79,6 +88,11 @@ export function sanitizeSvgElement(el: Element): void {
         const cleaned = sanitizeStyle(attr.value);
         if (cleaned !== attr.value) node.setAttribute(attr.name, cleaned);
       }
+    }
+    // A <style> block's CSS text can carry @import / url(...) external refs.
+    if (node.tagName.toLowerCase() === 'style' && node.textContent) {
+      const cleaned = sanitizeStyleSheet(node.textContent);
+      if (cleaned !== node.textContent) node.textContent = cleaned;
     }
     for (const child of Array.from(node.children)) visit(child);
   };

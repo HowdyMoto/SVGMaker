@@ -1,5 +1,6 @@
 import type { AppState } from '../core/state';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
+import { showExportDialog, exportArtboardToFile } from './export-dialog';
 
 export function updateArtboardsPanel(state: AppState): void {
   const list = document.getElementById('artboards-list');
@@ -35,9 +36,20 @@ export function updateArtboardsPanel(state: AppState): void {
     dims.textContent = `${ab.width} × ${ab.height}`;
     dims.title = 'Edit position and size in the fields below';
 
+    // Per-artboard quick export (SVG, straight to a file).
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'ab-export-btn';
+    exportBtn.title = 'Export this artboard as SVG';
+    exportBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v7m0 0 3-3m-3 3L5 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 11v2h10v-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportArtboardToFile(state, ab);
+    });
+
     li.appendChild(icon);
     li.appendChild(name);
     li.appendChild(dims);
+    li.appendChild(exportBtn);
 
     li.addEventListener('click', () => {
       state.activePanel = 'artboards';
@@ -144,9 +156,7 @@ export function setupArtboardButtons(state: AppState): void {
     });
   });
 
-  document.getElementById('btn-ab-delete')?.addEventListener('click', () => {
-    if (state.activeArtboardId) {
-      state.removeArtboard(state.activeArtboardId);
-    }
+  document.getElementById('btn-ab-export-all')?.addEventListener('click', () => {
+    showExportDialog(state);
   });
 }

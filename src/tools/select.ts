@@ -35,6 +35,9 @@ export class SelectTool extends BaseTool {
   private rotateCenter: Point = { x: 0, y: 0 };
   private rotateStartAngle = 0;
   private rotateOrigAngle = 0;
+  // Local-space rotation pivot, snapshotted at rotate start. The geometry bbox
+  // doesn't change while rotating, so this avoids a getBBox() reflow per frame.
+  private rotatePivotLocal: Point | null = null;
 
   // Multi-transform state
   private multiOrigTransforms: Map<string, string> = new Map();
@@ -78,6 +81,7 @@ export class SelectTool extends BaseTool {
           const shape = shapes[0];
           const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
           this.rotateCenter = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+          this.rotatePivotLocal = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
           this.rotateStartAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
           this.rotateOrigAngle = shape.rotation ?? 0;
         }
@@ -172,7 +176,7 @@ export class SelectTool extends BaseTool {
         const shape = this.state.getSelectedShape();
         if (!shape) return;
         shape.rotation = this.rotateOrigAngle + deltaAngle;
-        this.applyRotation(shape);
+        this.applyRotation(shape, this.rotatePivotLocal ?? undefined);
       }
       this.state.onChange_public();
       return;
@@ -514,10 +518,16 @@ export class SelectTool extends BaseTool {
     return { dx: hasE ? dW : -dW, dy: hasS ? dH : -dH };
   }
 
-  private applyRotation(shape: { element: SVGElement; rotation?: number }): void {
+  private applyRotation(shape: { element: SVGElement; rotation?: number }, pivot?: Point): void {
     const el = shape.element;
-    const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-    setRotation(el, shape.rotation ?? 0, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
+    let cx = pivot?.x;
+    let cy = pivot?.y;
+    if (cx === undefined || cy === undefined) {
+      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
+      cx = bbox.x + bbox.width / 2;
+      cy = bbox.y + bbox.height / 2;
+    }
+    setRotation(el, shape.rotation ?? 0, cx, cy);
   }
 
   private applyResize(el: SVGElement, _type: string, origBBox: DOMRect, dx: number, dy: number, handle: string): void {

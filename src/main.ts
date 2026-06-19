@@ -126,6 +126,13 @@ function onStateChange(): void {
 }
 
 function setTool(toolName: ToolName): void {
+  // Switching tools abandons any in-progress gesture (e.g. Space-to-pan or a
+  // tool shortcut pressed mid-drag). Clear the interactive-render guard and do
+  // one full render so the side panels can't get stuck frozen.
+  if (state.interactive) {
+    state.setInteractive(false);
+    onStateChange();
+  }
   if (activeTool.deactivate) activeTool.deactivate();
   state.currentTool = toolName;
   activeTool = tools[toolName];

@@ -77,7 +77,7 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
     border.setAttribute('pointer-events', 'none');
     abLayer.appendChild(border);
 
-    // Artboard name label (above top-left corner)
+    // Artboard label (above top-left corner): name + dimensions.
     const label = document.createElementNS(NS, 'text');
     label.setAttribute('x', String(ab.x));
     label.setAttribute('y', String(ab.y - 6));
@@ -85,7 +85,16 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
     label.setAttribute('font-family', 'Arial, sans-serif');
     label.setAttribute('fill', isActive ? '#ccc' : '#888');
     label.setAttribute('pointer-events', 'none');
-    label.textContent = ab.name;
+
+    const nameSpan = document.createElementNS(NS, 'tspan');
+    nameSpan.textContent = ab.name;
+    label.appendChild(nameSpan);
+
+    const dimSpan = document.createElementNS(NS, 'tspan');
+    dimSpan.textContent = `  ${Math.round(ab.width)} × ${Math.round(ab.height)}`;
+    dimSpan.setAttribute('fill', isActive ? '#888' : '#666');
+    label.appendChild(dimSpan);
+
     labelsLayer.appendChild(label);
 
     // Resize handles if artboard tool is active and this artboard is selected

@@ -1142,6 +1142,37 @@ input, select, button { font-family: inherit; font-size: 12px; }
   color: white;
 }
 
+/* Dimensions text + per-artboard export button */
+.layer-dims {
+  margin-left: auto;
+  color: var(--ai-text-dim);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.ab-export-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  color: var(--ai-text-dim);
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.layer-item:hover .ab-export-btn { opacity: 1; }
+
+.ab-export-btn:hover {
+  color: var(--ai-accent);
+  background: var(--ai-hover);
+}
+
 /* Drag-to-reorder feedback */
 .layer-item.dragging {
   opacity: 0.4;
