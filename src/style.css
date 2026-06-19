@@ -570,12 +570,14 @@ input, select, button { font-family: inherit; font-size: 12px; }
 #panels {
   grid-column: 4;
   grid-row: 1 / -1;
-  background: var(--ai-panel);
+  background: var(--ai-panel-darker);
   border-left: 1px solid var(--ai-border);
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  padding: 8px;
 }
 
 /* Layers panel grows to fill the remaining height; its list scrolls inside. */
@@ -597,27 +599,28 @@ input, select, button { font-family: inherit; font-size: 12px; }
 }
 
 .panel {
-  border-bottom: 1px solid var(--ai-border);
   flex-shrink: 0;
+  background: var(--ai-panel);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px 6px 13px;
-  background: var(--ai-panel-dark);
+  padding: 7px 10px;
+  background: transparent;
   cursor: default;
-  border-bottom: 1px solid var(--ai-border);
-  border-left: 3px solid var(--ai-border-light);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
 }
 
 .panel-header span {
   font-size: 11px;
-  font-weight: 700;
-  color: var(--ai-text-bright);
+  font-weight: 600;
+  color: var(--ai-text);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   margin-right: auto;
 }
 
@@ -1225,8 +1228,8 @@ input, select, button { font-family: inherit; font-size: 12px; }
   grid-template-columns: 1fr 1fr;
   gap: 4px 8px;
   padding: 6px 8px;
-  background: var(--ai-panel-dark);
-  border-top: 1px solid var(--ai-border);
+  background: transparent;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
 }
 
 .ab-prop {
@@ -1305,9 +1308,9 @@ input, select, button { font-family: inherit; font-size: 12px; }
 .panel-footer {
   display: flex;
   gap: 2px;
-  padding: 4px 8px;
-  background: var(--ai-panel-dark);
-  border-top: 1px solid var(--ai-border);
+  padding: 6px 8px;
+  background: transparent;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
 }
 
 .panel-footer button {

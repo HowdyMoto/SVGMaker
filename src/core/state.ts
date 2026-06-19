@@ -1,6 +1,7 @@
 import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef, GradientDef, GradientStop, PatternDef } from './types';
 import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
+import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
 import { nudgeTranslate, getRotation } from './transform';
 
@@ -12,6 +13,14 @@ interface ClipboardEntry {
   rotation?: number;
   symbolId?: string;
 }
+
+/**
+ * Built-in editor chrome that lives in the canvas <defs> (the grid background
+ * and transparency checkerboard). It must never be exported or re-imported:
+ * their tiny corner paths render as stray lines in tools that read raw <path>
+ * geometry and ignore <defs>/<pattern> structure (e.g. TraceCraft).
+ */
+const EDITOR_DEF_IDS = new Set(['grid-small', 'grid-large', 'transparency-check']);
 
 export class AppState {
   currentTool: ToolName = 'select';
@@ -117,6 +126,48 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  /**
+   * Duplicate an artboard along with the artwork sitting on it, placed to the
+   * right of the rightmost artboard (the same slot the "+" button uses).
+   */
+  duplicateArtboard(id: string): void {
+    const src = this.getArtboardById(id);
+    if (!src) return;
+
+    let maxRight = 0;
+    for (const ab of this.artboards) maxRight = Math.max(maxRight, ab.x + ab.width);
+    const dx = (maxRight + 40) - src.x;
+    const dy = 0;
+
+    // Clone every shape whose centre falls on the source artboard onto the copy.
+    for (const shape of this.getShapesOnArtboard(id)) {
+      const newEl = shape.element.cloneNode(true) as SVGElement;
+      const newId = this.nextId();
+      newEl.id = newId;
+      if (shape.type === 'group') this.reIdGroupChildren(newEl);
+      newEl.setAttribute('data-name', shape.name);
+      this.drawingLayer.appendChild(newEl); // in the DOM so transform offsets resolve
+      this.offsetElement(newEl, dx, dy);
+      this.shapes.push({
+        id: newId, type: shape.type, element: newEl, name: shape.name,
+        style: { ...shape.style }, visible: shape.visible, locked: shape.locked,
+        rotation: shape.rotation, symbolId: shape.symbolId,
+      });
+    }
+
+    const copy: Artboard = {
+      id: this.nextArtboardId(),
+      x: src.x + dx, y: src.y + dy,
+      width: src.width, height: src.height,
+      name: `${src.name} copy`,
+    };
+    this.artboards.push(copy);
+    this.activeArtboardId = copy.id;
+    this.selectedArtboardId = copy.id;
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
   removeArtboard(id: string): void {
     if (this.artboards.length <= 1) return; // Must keep at least one
     const idx = this.artboards.findIndex(a => a.id === id);
@@ -162,6 +213,19 @@ export class AppState {
 
   onChange_public(): void {
     this.onChangeCallback();
+  }
+
+  /**
+   * True while a continuous pointer gesture (drag/resize/rotate) is in flight.
+   * The renderer uses this to skip the expensive side-panel rebuilds on every
+   * mousemove — only the canvas overlays need to follow the pointer live — and
+   * does a full render once the gesture ends. Tools must clear it on mouseup.
+   */
+  interactive = false;
+
+  /** Begin/end an interactive gesture (see `interactive`). */
+  setInteractive(on: boolean): void {
+    this.interactive = on;
   }
 
   nextId(): string {
@@ -595,6 +659,7 @@ export class AppState {
     if (!srcEl) return null;
 
     const newEl = document.importNode(srcEl, true) as SVGElement;
+    sanitizeSvgElement(newEl); // strip event handlers / unsafe refs from untrusted markup
     const newId = this.nextId();
     newEl.id = newId;
     const name = `${entry.type} ${newId.replace('shape-', '#')}`;
@@ -637,6 +702,7 @@ export class AppState {
       for (let i = 0; i < svgEl.children.length; i++) {
         const child = svgEl.children[i];
         const imported = document.importNode(child, true) as SVGElement;
+        sanitizeSvgElement(imported); // untrusted system-clipboard SVG
         const type = this.detectType(imported);
         if (!type) continue;
 
@@ -1396,8 +1462,10 @@ export class AppState {
     for (const s of this.symbols) parts.push(s.element.outerHTML);
     const defs = this.defsElement;
     if (defs) {
-      // Export gradients and patterns from the live defs element
+      // Export user gradients/patterns only — never the editor's grid /
+      // transparency chrome that shares this <defs>.
       for (const child of Array.from(defs.children)) {
+        if (EDITOR_DEF_IDS.has(child.id)) continue;
         const tag = child.tagName.toLowerCase();
         if (tag === 'lineargradient' || tag === 'radialgradient' || tag === 'pattern') {
           parts.push(child.outerHTML);
@@ -1453,6 +1521,9 @@ export class AppState {
     if (!defsEl) return;
 
     for (const child of Array.from(defsEl.children)) {
+      // Skip the editor's own grid/transparency chrome — the canvas already
+      // has it, so re-importing would duplicate it (and leak it on re-export).
+      if (EDITOR_DEF_IDS.has(child.id)) continue;
       const tag = child.tagName.toLowerCase();
 
       if (tag === 'lineargradient' || tag === 'radialgradient') {
@@ -1487,6 +1558,7 @@ export class AppState {
 
         // Copy element into our defs
         const imported = document.importNode(child, true) as SVGElement;
+        sanitizeSvgElement(imported);
         this.ensureDefs().appendChild(imported);
       }
 
@@ -1495,8 +1567,9 @@ export class AppState {
         const m = id.match(/pat-(\d+)/);
         if (m) this.patternCounter = Math.max(this.patternCounter, parseInt(m[1]));
 
-        // Copy element into our defs as-is
+        // Copy element into our defs (sanitized: patterns can embed <image href>)
         const imported = document.importNode(child, true) as SVGElement;
+        sanitizeSvgElement(imported);
         this.ensureDefs().appendChild(imported);
 
         // Create a minimal PatternDef for tracking
@@ -1529,6 +1602,7 @@ export class AppState {
         const tag = child.tagName.toLowerCase();
         if (['rect', 'ellipse', 'line', 'polyline', 'polygon', 'path', 'text', 'image'].includes(tag)) {
           const importedEl = document.importNode(child, true) as SVGElement;
+          sanitizeSvgElement(importedEl); // strip event handlers / unsafe refs from imported SVG
           const id = this.nextId();
           importedEl.id = id;
           // Strip degenerate subpaths (e.g. Inkscape's origin-anchored slivers
@@ -1583,7 +1657,9 @@ export class AppState {
 
   /** Load raw SVG innerHTML into the drawing layer (used by project file loader) */
   importSVGMarkup(svgMarkup: string): void {
-    this.drawingLayer.innerHTML = svgMarkup;
+    // Untrusted file content: sanitize before it touches the live DOM so a
+    // crafted .svg/.svgmaker can't smuggle in event handlers or external refs.
+    this.drawingLayer.innerHTML = sanitizeSvgMarkup(svgMarkup);
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = [];
   }

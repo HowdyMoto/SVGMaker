@@ -65,6 +65,7 @@ export function updateArtboardsPanel(state: AppState): void {
       state.selectedArtboardId = ab.id;
       showContextMenu(e.clientX, e.clientY, [
         { label: 'Rename', action: () => renameArtboard(ab.id) },
+        { label: 'Duplicate', action: () => state.duplicateArtboard(ab.id) },
         { label: 'Delete', danger: true, action: () => state.removeArtboard(ab.id) },
       ]);
     });

@@ -37,6 +37,7 @@ export class ArtboardTool extends BaseTool {
       const ab = this.state.getArtboardById(abId);
       if (ab) {
         this.mode = 'resizing';
+        this.state.setInteractive(true);
         this.resizingAb = ab;
         this.resizeHandle = handle;
         this.resizeOrigRect = { x: ab.x, y: ab.y, w: ab.width, h: ab.height };
@@ -51,6 +52,7 @@ export class ArtboardTool extends BaseTool {
       this.state.selectedArtboardId = clickedAb.id;
       this.state.setActiveArtboard(clickedAb.id);
       this.mode = 'moving';
+      this.state.setInteractive(true);
       this.movingAb = clickedAb;
       this.moveOrigX = clickedAb.x;
       this.moveOrigY = clickedAb.y;
@@ -137,6 +139,7 @@ export class ArtboardTool extends BaseTool {
     this.mode = 'idle';
     this.movingAb = null;
     this.resizingAb = null;
+    this.state.setInteractive(false); // gesture done — final full render below
     this.state.onChange_public();
   }
 

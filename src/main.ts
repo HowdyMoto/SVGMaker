@@ -109,9 +109,16 @@ function getArtboardsBounds(): { x: number; y: number; w: number; h: number } {
 }
 
 function onStateChange(): void {
+  // Canvas overlays must track the pointer every frame.
   renderArtboards(state, svgCanvas);
   updateSelectionOverlay(state, selectionLayer);
   renderNodeOverlay(state, guidesLayer);
+
+  // The side panels reflect document *structure*, which doesn't change during a
+  // drag/resize/rotate — skip their (full innerHTML) rebuilds mid-gesture and
+  // let the mouseup do one final full render. Big win on large documents.
+  if (state.interactive) return;
+
   updatePropertiesPanel(state);
   updateLayersPanel(state);
   updateArtboardsPanel(state);

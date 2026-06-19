@@ -11,6 +11,9 @@ export class SelectTool extends BaseTool {
   // Drag-move state
   private dragging = false;
   private dragLastPt: Point = { x: 0, y: 0 };
+  // Shapes being dragged, resolved once at drag start so the per-frame move
+  // loop doesn't re-walk the shape tree (findShapeById is O(n)) every mousemove.
+  private dragShapes: ShapeData[] = [];
 
   // Resize state
   private resizing = false;
@@ -23,6 +26,9 @@ export class SelectTool extends BaseTool {
   // Original `transform` captured at resize start, used to scale groups (which
   // have no editable geometry) without compounding across mousemoves.
   private resizeOrigTransform: string | null = null;
+  // Original text font-size captured at resize start, so font scaling is
+  // computed from the start size rather than compounding every mousemove.
+  private resizeOrigFontSize = 0;
 
   // Rotation state
   private rotating = false;
@@ -62,6 +68,7 @@ export class SelectTool extends BaseTool {
 
       if (handle === 'rotate') {
         this.rotating = true;
+        this.state.setInteractive(true);
         if (isMulti) {
           const cb = this.multiCombinedBBox!;
           this.rotateCenter = { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 };
@@ -78,6 +85,7 @@ export class SelectTool extends BaseTool {
       }
 
       this.resizing = true;
+      this.state.setInteractive(true);
       this.resizeHandle = handle;
       this.resizeStart = { ...pt };
       this.resizeOrigGeometry = null;
@@ -91,6 +99,7 @@ export class SelectTool extends BaseTool {
         if (tag === 'path') this.resizeOrigGeometry = el.getAttribute('d');
         else if (tag === 'polyline' || tag === 'polygon') this.resizeOrigGeometry = el.getAttribute('points');
         else if (tag === 'g') this.resizeOrigTransform = el.getAttribute('transform');
+        else if (tag === 'text') this.resizeOrigFontSize = parseFloat(el.getAttribute('font-size') ?? '24');
       }
       return;
     }
@@ -113,7 +122,12 @@ export class SelectTool extends BaseTool {
       }
 
       this.dragging = true;
+      this.state.setInteractive(true);
       this.dragLastPt = { ...pt };
+      // Resolve the dragged shapes once; reused every mousemove frame.
+      this.dragShapes = this.state.selectedShapeIds
+        .map(id => this.state.findShapeById(id))
+        .filter((s): s is ShapeData => s !== null);
     } else {
       // Clicked on empty space
       const isCanvas = target.id === 'canvas-bg' || target.id === 'canvas-grid' ||
@@ -189,10 +203,7 @@ export class SelectTool extends BaseTool {
       const dx = pt.x - this.dragLastPt.x;
       const dy = pt.y - this.dragLastPt.y;
       if (dx !== 0 || dy !== 0) {
-        for (const id of this.state.selectedShapeIds) {
-          const s = this.state.findShapeById(id);
-          if (s) this.translateElement(s.element, dx, dy);
-        }
+        for (const s of this.dragShapes) this.translateElement(s.element, dx, dy);
         this.dragLastPt = { ...pt };
         this.state.onChange_public();
       }
@@ -216,6 +227,11 @@ export class SelectTool extends BaseTool {
       this.resizeOrigBBox = null;
       this.resizeOrigGeometry = null;
       this.resizeOrigTransform = null;
+      this.resizeOrigFontSize = 0;
+      // Gesture done: leave interactive mode and do one full render so the side
+      // panels catch up with the final geometry.
+      this.state.setInteractive(false);
+      this.state.onChange_public();
     }
     this.canvas.endPan();
   }
@@ -576,9 +592,10 @@ export class SelectTool extends BaseTool {
     } else if (tag === 'text') {
       el.setAttribute('x', String(newX));
       el.setAttribute('y', String(newY + newH));
-      const scaleFactor = newH / origBBox.height;
-      const origFontSize = parseFloat(el.getAttribute('font-size') ?? '24');
-      el.setAttribute('font-size', String(origFontSize * scaleFactor));
+      // Scale from the size captured at resize start, not the live (already
+      // scaled) size — otherwise each mousemove compounds and the text explodes.
+      const scaleFactor = origBBox.height !== 0 ? newH / origBBox.height : 1;
+      el.setAttribute('font-size', String(this.resizeOrigFontSize * scaleFactor));
     } else if (tag === 'image' || tag === 'use') {
       el.setAttribute('x', String(newX));
       el.setAttribute('y', String(newY));

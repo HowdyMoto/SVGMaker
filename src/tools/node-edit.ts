@@ -58,6 +58,7 @@ export class NodeEditTool extends BaseTool {
     if (h) {
       this.dragHandle = h;
       this.dragAlt = e.altKey;
+      this.state.setInteractive(true);
       return;
     }
 
@@ -68,6 +69,7 @@ export class NodeEditTool extends BaseTool {
       else if (!session.isSelected(a.sp, a.i)) session.selectOnly(a.sp, a.i);
       this.dragAnchor = a;
       this.dragLast = local;
+      this.state.setInteractive(true);
       this.state.onChange_public();
       return;
     }
@@ -139,8 +141,11 @@ export class NodeEditTool extends BaseTool {
       else this.handleMarqueeClick();
       return;
     }
+    const wasDragging = !!(this.dragHandle || this.dragAnchor);
+    if (wasDragging) this.state.setInteractive(false); // before commit, so it renders fully
     if (this.dirty) this.state.commitPathEdit();
     this.resetDrag();
+    if (wasDragging) this.state.onChange_public();
   }
 
   onKeyDown(e: KeyboardEvent): void {

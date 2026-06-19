@@ -2,6 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!--
+    Defense-in-depth against malicious imported SVGs. The import pipeline strips
+    event handlers / unsafe refs (see core/svg-sanitize.ts); this CSP is the
+    backstop: no external/inline scripts, and images/connections limited so a
+    crafted file can't beacon out. 'unsafe-inline' is allowed for styles only
+    (the editor sets inline styles extensively); ws: keeps Vite HMR working.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SVGMaker</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />

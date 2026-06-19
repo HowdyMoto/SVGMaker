@@ -1,6 +1,19 @@
 import type { AppState } from '../core/state';
 import type { GradientDef, GradientStop, PatternDef } from '../core/types';
 
+/**
+ * Escape a value for safe interpolation into an HTML attribute. Gradient stop
+ * colors and pattern colors can originate from imported (untrusted) SVG files,
+ * so they must not be able to break out of the `value="…"` context below.
+ */
+function escapeAttr(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 const SWATCHES = [
   'none',
   '#FFFFFF', '#000000', '#333333', '#666666', '#999999', '#CCCCCC',
@@ -363,7 +376,7 @@ function renderGradient(state: AppState, container: HTMLElement, type: 'linear' 
     row.className = 'cpicker-stop-edit-row';
     row.innerHTML = `
       <label>Color</label>
-      <input type="color" value="${stop.color}" class="cpicker-stop-color">
+      <input type="color" value="${escapeAttr(stop.color)}" class="cpicker-stop-color">
       <label>Pos</label>
       <input type="number" min="0" max="100" value="${Math.round(stop.offset * 100)}" class="cpicker-slider-val" style="width:40px">%
     `;
@@ -544,7 +557,7 @@ function renderPattern(state: AppState, container: HTMLElement, currentValue: st
       // Color picker for preset
       const colorRow = document.createElement('div');
       colorRow.className = 'cpicker-dir-row';
-      colorRow.innerHTML = `<label>Color</label><input type="color" value="${pat?.presetColor ?? '#000000'}" id="_pat-color">`;
+      colorRow.innerHTML = `<label>Color</label><input type="color" value="${escapeAttr(pat?.presetColor ?? '#000000')}" id="_pat-color">`;
       controls.appendChild(colorRow);
 
       const colorInput = controls.querySelector('#_pat-color') as HTMLInputElement;
