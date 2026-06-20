@@ -55,7 +55,28 @@ export function bakeLayerContent(live: SVGGElement): { content: string; warnings
   const warnings = new Set<string>();
   const clone = live.cloneNode(true) as SVGGElement;
   bakeChildren(live, clone, layerInv, warnings);
+  flattenStrokeAlign(clone, warnings);
   return { content: clone.innerHTML, warnings: [...warnings] };
+}
+
+/**
+ * Inside/outside stroke alignment is emulated with a clip-path + doubled width
+ * (see stroke-align.ts). A baked single path can't carry a clip, so revert to a
+ * plain centered stroke at the authored width and warn.
+ */
+function flattenStrokeAlign(root: Element, warnings: Set<string>): void {
+  const aligned = root.querySelectorAll('[data-stroke-align]');
+  aligned.forEach(el => {
+    const w = parseFloat(el.getAttribute('stroke-width') ?? '0');
+    if (Number.isFinite(w)) el.setAttribute('stroke-width', String(w / 2));
+    el.removeAttribute('data-stroke-align');
+    el.removeAttribute('clip-path');
+    (el as SVGElement).style?.removeProperty('paint-order');
+    if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
+  });
+  if (aligned.length) {
+    warnings.add('Inside/outside stroke alignment was flattened to centered — a baked single path cannot represent it.');
+  }
 }
 
 function bakeChildren(live: Element, clone: Element, layerInv: DOMMatrix, warnings: Set<string>): void {

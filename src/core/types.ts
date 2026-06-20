@@ -27,8 +27,15 @@ export interface ShapeStyle {
   fontWeight?: string;
   fontStyle?: string;
   strokeDasharray?: string;
+  strokeDashoffset?: number;
   strokeLinecap?: string;
   strokeLinejoin?: string;
+  strokeMiterlimit?: number;
+  /** Emulated stroke alignment. SVG has no native property, so inside/outside are
+   *  rendered via clip-path + a doubled stroke-width (see stroke-align.ts). */
+  strokeAlign?: 'center' | 'inside' | 'outside';
+  /** vector-effect: non-scaling-stroke — keep stroke width constant under zoom/scale. */
+  strokeNonScaling?: boolean;
   rx?: number;
 }
 

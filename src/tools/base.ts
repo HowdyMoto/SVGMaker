@@ -1,6 +1,7 @@
 import type { AppState } from '../core/state';
 import type { CanvasController } from '../core/canvas';
-import type { Point } from '../core/types';
+import type { Point, ShapeData } from '../core/types';
+import { applyStrokeAlignment } from '../core/stroke-align';
 
 export interface Tool {
   name: string;
@@ -42,6 +43,12 @@ export abstract class BaseTool implements Tool {
     }
     if ((s.strokeOpacity ?? 1) !== 1) {
       el.setAttribute('stroke-opacity', String(s.strokeOpacity));
+    }
+    if (s.strokeDashoffset) el.setAttribute('stroke-dashoffset', String(s.strokeDashoffset));
+    if ((s.strokeMiterlimit ?? 4) !== 4) el.setAttribute('stroke-miterlimit', String(s.strokeMiterlimit));
+    if (s.strokeNonScaling) el.setAttribute('vector-effect', 'non-scaling-stroke');
+    if (s.strokeAlign && s.strokeAlign !== 'center') {
+      applyStrokeAlignment(el, el.tagName.toLowerCase() as ShapeData['type'], s.strokeAlign, s.strokeWidth);
     }
   }
 }

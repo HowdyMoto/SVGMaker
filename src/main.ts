@@ -109,6 +109,9 @@ function getArtboardsBounds(): { x: number; y: number; w: number; h: number } {
 }
 
 function onStateChange(): void {
+  // Keep emulated inside/outside stroke clips aligned to current geometry.
+  state.refreshStrokeAlignClips();
+
   // Canvas overlays must track the pointer every frame.
   renderArtboards(state, svgCanvas);
   updateSelectionOverlay(state, selectionLayer);

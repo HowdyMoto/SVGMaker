@@ -4,6 +4,7 @@ import { sanitizePathData } from './path-sanitize';
 import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
 import { nudgeTranslate, getRotation } from './transform';
+import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 
 /** One copied shape, captured as serialized markup so paste is self-contained. */
 interface ClipboardEntry {
@@ -64,6 +65,10 @@ export class AppState {
     fontStyle: 'normal',
     strokeLinecap: 'butt',
     strokeLinejoin: 'miter',
+    strokeMiterlimit: 4,
+    strokeAlign: 'center',
+    strokeDashoffset: 0,
+    strokeNonScaling: false,
     rx: 0,
   };
 
@@ -215,6 +220,34 @@ export class AppState {
 
   onChange_public(): void {
     this.onChangeCallback();
+  }
+
+  /**
+   * Re-sync emulated stroke-alignment clip-paths to current geometry, and prune
+   * clips for shapes that are gone or no longer aligned. Called from the render
+   * cycle so inside/outside strokes stay aligned after moves/resizes/loads.
+   */
+  refreshStrokeAlignClips(): void {
+    const expected = new Set<string>();
+    const visit = (shapes: ShapeData[]) => {
+      for (const s of shapes) {
+        const align = s.style.strokeAlign ?? 'center';
+        if (align !== 'center' && s.element.isConnected) {
+          expected.add(STROKE_CLIP_PREFIX + s.element.id);
+          applyStrokeAlignment(s.element, s.type, align, s.style.strokeWidth);
+        }
+        if (s.children?.length) visit(s.children);
+      }
+    };
+    visit(this.shapes);
+
+    // Prune orphaned alignment clips.
+    const defs = this.defsElement ?? this.drawingLayer.closest('svg')?.querySelector('defs');
+    if (defs) {
+      for (const child of Array.from(defs.children)) {
+        if (child.id.startsWith(STROKE_CLIP_PREFIX) && !expected.has(child.id)) child.remove();
+      }
+    }
   }
 
   /**
@@ -936,14 +969,22 @@ export class AppState {
     }
     const fill = el.getAttribute('fill') ?? (type === 'line' ? 'none' : '#FFFFFF');
     const stroke = el.getAttribute('stroke') ?? '#000000';
-    const strokeWidth = parseFloat(el.getAttribute('stroke-width') ?? '1');
+    // Inside/outside alignment renders at double width (see stroke-align.ts);
+    // the data-stroke-align marker lets us recover the authored width.
+    const align = el.getAttribute('data-stroke-align');
+    const rawWidth = parseFloat(el.getAttribute('stroke-width') ?? '1');
+    const strokeWidth = (align === 'inside' || align === 'outside') ? rawWidth / 2 : rawWidth;
     const opacity = parseFloat(el.getAttribute('opacity') ?? '1');
     const style: ShapeStyle = { fill, stroke, strokeWidth, opacity };
     style.fillOpacity = parseFloat(el.getAttribute('fill-opacity') ?? '1');
     style.strokeOpacity = parseFloat(el.getAttribute('stroke-opacity') ?? '1');
+    style.strokeAlign = (align === 'inside' || align === 'outside') ? align : 'center';
     style.strokeLinecap = el.getAttribute('stroke-linecap') ?? 'butt';
     style.strokeLinejoin = el.getAttribute('stroke-linejoin') ?? 'miter';
+    style.strokeMiterlimit = parseFloat(el.getAttribute('stroke-miterlimit') ?? '4');
     style.strokeDasharray = el.getAttribute('stroke-dasharray') ?? '';
+    style.strokeDashoffset = parseFloat(el.getAttribute('stroke-dashoffset') ?? '0');
+    style.strokeNonScaling = (el.getAttribute('vector-effect') ?? '').includes('non-scaling-stroke');
     if (type === 'rect') {
       style.rx = parseFloat(el.getAttribute('rx') ?? '0');
     }
@@ -1500,6 +1541,9 @@ export class AppState {
         if (EDITOR_DEF_IDS.has(child.id)) continue;
         const tag = child.tagName.toLowerCase();
         if (tag === 'lineargradient' || tag === 'radialgradient' || tag === 'pattern') {
+          parts.push(child.outerHTML);
+        } else if (tag === 'clippath' && child.id.startsWith(STROKE_CLIP_PREFIX)) {
+          // Emulated stroke-alignment clips — needed so the file renders elsewhere.
           parts.push(child.outerHTML);
         }
       }

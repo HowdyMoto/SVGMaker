@@ -1,5 +1,6 @@
 import type { AppState } from '../core/state';
 import { setRotation } from '../core/transform';
+import { applyStrokeAlignment, type StrokeAlign } from '../core/stroke-align';
 import { populateFontSelect } from '../fonts';
 
 /** Convert SVG fill/stroke values to CSS-renderable backgrounds for preview swatches */
@@ -26,6 +27,12 @@ function paintPreviewBg(value: string, state: AppState): string {
   }
   if (value.startsWith('url(')) return '#888';
   return value;
+}
+
+/** Reflect the active stroke-alignment in the segmented button group. */
+function setActiveAlign(group: HTMLElement, align: string): void {
+  group.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('active', b.getAttribute('data-align') === align));
 }
 
 /** Show the Point-type row while node-editing and reflect the selection's type. */
@@ -91,6 +98,12 @@ export function setupProperties(state: AppState): void {
   // Stroke panel
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
   const strokeDash = document.getElementById('stroke-dash') as HTMLInputElement;
+  const strokeDashoffsetInput = document.getElementById('stroke-dashoffset') as HTMLInputElement;
+  const strokeMiterInput = document.getElementById('stroke-miterlimit') as HTMLInputElement;
+  const strokeNonScalingInput = document.getElementById('stroke-nonscaling') as HTMLInputElement;
+  const strokeAlignGroup = document.getElementById('stroke-align') as HTMLElement;
+  const currentStrokeAlign = (): StrokeAlign =>
+    (strokeAlignGroup.querySelector('button.active')?.getAttribute('data-align') as StrokeAlign) || 'center';
 
   const applyToShape = () => {
     const shape = state.getSelectedShape();
@@ -110,8 +123,10 @@ export function setupProperties(state: AppState): void {
       shape.style.stroke = 'none';
     }
 
-    el.setAttribute('stroke-width', strokeWidthInput.value);
-    shape.style.strokeWidth = parseFloat(strokeWidthInput.value);
+    // DOM stroke-width is finalized by applyStrokeAlignment below (doubled when
+    // inside/outside-aligned); here we just record the authored width.
+    const authoredWidth = parseFloat(strokeWidthInput.value) || 0;
+    shape.style.strokeWidth = authoredWidth;
 
     const opacity = parseFloat(opacityInput.value);
     el.setAttribute('opacity', String(opacity));
@@ -154,6 +169,26 @@ export function setupProperties(state: AppState): void {
       el.removeAttribute('stroke-dasharray');
       shape.style.strokeDasharray = '';
     }
+
+    const dashOffset = parseFloat(strokeDashoffsetInput.value) || 0;
+    if (dashOffset) el.setAttribute('stroke-dashoffset', String(dashOffset));
+    else el.removeAttribute('stroke-dashoffset');
+    shape.style.strokeDashoffset = dashOffset;
+
+    const miter = parseFloat(strokeMiterInput.value) || 4;
+    if (miter !== 4) el.setAttribute('stroke-miterlimit', String(miter));
+    else el.removeAttribute('stroke-miterlimit');
+    shape.style.strokeMiterlimit = miter;
+
+    const nonScaling = strokeNonScalingInput.checked;
+    if (nonScaling) el.setAttribute('vector-effect', 'non-scaling-stroke');
+    else el.removeAttribute('vector-effect');
+    shape.style.strokeNonScaling = nonScaling;
+
+    // Apply alignment last — it owns the final DOM stroke-width + clip-path.
+    const align = currentStrokeAlign();
+    shape.style.strokeAlign = align;
+    applyStrokeAlignment(el, shape.type, align, authoredWidth);
 
     state.saveHistory();
     state.onChange_public();
@@ -204,6 +239,10 @@ export function setupProperties(state: AppState): void {
     state.defaultStyle.fontWeight = boldBtn.classList.contains('active') ? 'bold' : 'normal';
     state.defaultStyle.fontStyle = italicBtn.classList.contains('active') ? 'italic' : 'normal';
     state.defaultStyle.rx = parseFloat(propRx.value);
+    state.defaultStyle.strokeAlign = currentStrokeAlign();
+    state.defaultStyle.strokeDashoffset = parseFloat(strokeDashoffsetInput.value) || 0;
+    state.defaultStyle.strokeMiterlimit = parseFloat(strokeMiterInput.value) || 4;
+    state.defaultStyle.strokeNonScaling = strokeNonScalingInput.checked;
     state.fillNone = fillNoneBtn.classList.contains('active');
     state.strokeNone = strokeNoneBtn.classList.contains('active');
   };
@@ -301,6 +340,9 @@ export function setupProperties(state: AppState): void {
   fontFamilyInput.addEventListener('change', handleChange);
   propRx.addEventListener('change', handleChange);
   strokeDash.addEventListener('change', handleChange);
+  strokeDashoffsetInput.addEventListener('change', handleChange);
+  strokeMiterInput.addEventListener('change', handleChange);
+  strokeNonScalingInput.addEventListener('change', handleChange);
   propX.addEventListener('change', applyPosition);
   propY.addEventListener('change', applyPosition);
   propW.addEventListener('change', applyPosition);
@@ -343,6 +385,16 @@ export function setupProperties(state: AppState): void {
     });
   });
 
+  // Stroke alignment buttons (center / inside / outside). Routes through
+  // handleChange so applyToShape re-applies the clip + doubled width.
+  strokeAlignGroup.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      strokeAlignGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      handleChange();
+    });
+  });
+
   // Stroke details expand/collapse
   const strokeExpandBtn = document.getElementById('stroke-expand') as HTMLButtonElement;
   const strokeDetails = document.getElementById('stroke-details') as HTMLElement;
@@ -381,6 +433,10 @@ export function updatePropertiesPanel(state: AppState): void {
   const propRotation = document.getElementById('prop-rotation') as HTMLInputElement;
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
   const strokeDash = document.getElementById('stroke-dash') as HTMLInputElement;
+  const strokeDashoffsetInput = document.getElementById('stroke-dashoffset') as HTMLInputElement;
+  const strokeMiterInput = document.getElementById('stroke-miterlimit') as HTMLInputElement;
+  const strokeNonScalingInput = document.getElementById('stroke-nonscaling') as HTMLInputElement;
+  const strokeAlignGroup = document.getElementById('stroke-align') as HTMLElement;
 
   // Control bar
   const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
@@ -433,6 +489,10 @@ export function updatePropertiesPanel(state: AppState): void {
     ctrlRotation.value = '0';
     strokeWeight.value = String(ds.strokeWidth);
     strokeDash.value = ds.strokeDasharray ?? '';
+    strokeDashoffsetInput.value = String(ds.strokeDashoffset ?? 0);
+    strokeMiterInput.value = String(ds.strokeMiterlimit ?? 4);
+    strokeNonScalingInput.checked = !!ds.strokeNonScaling;
+    setActiveAlign(strokeAlignGroup, ds.strokeAlign ?? 'center');
 
     fillSwatch.style.background = state.fillNone ? 'transparent' : paintPreviewBg(ds.fill, state);
     strokeSwatch.style.borderColor = state.strokeNone ? 'transparent' : (ds.stroke.startsWith('url(') ? '#888' : ds.stroke);
@@ -462,6 +522,10 @@ export function updatePropertiesPanel(state: AppState): void {
   updateNodeRow(state);
   strokeWeight.value = String(s.strokeWidth);
   strokeDash.value = s.strokeDasharray ?? '';
+  strokeDashoffsetInput.value = String(s.strokeDashoffset ?? 0);
+  strokeMiterInput.value = String(s.strokeMiterlimit ?? 4);
+  strokeNonScalingInput.checked = !!s.strokeNonScaling;
+  setActiveAlign(strokeAlignGroup, s.strokeAlign ?? 'center');
 
   ctrlFill.value = (isFillNone || s.fill.startsWith('url(')) ? '#000000' : s.fill;
   ctrlFillNone.classList.toggle('active', isFillNone);

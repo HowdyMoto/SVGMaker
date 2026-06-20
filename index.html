@@ -364,6 +364,20 @@
                   <input type="number" id="stroke-weight" value="1" min="0" step="0.5" />
                 </div>
                 <div class="stroke-detail-row">
+                  <label>Align</label>
+                  <div class="btn-group" id="stroke-align">
+                    <button data-align="center" class="active" title="Align stroke to center">
+                      <svg viewBox="0 0 20 14"><rect x="4" y="3.5" width="12" height="7" fill="none" stroke="currentColor" stroke-width="3"/></svg>
+                    </button>
+                    <button data-align="inside" title="Align stroke to inside">
+                      <svg viewBox="0 0 20 14"><rect x="4" y="3.5" width="12" height="7" fill="none" stroke="currentColor" stroke-width="1"/><rect x="5" y="4.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                    </button>
+                    <button data-align="outside" title="Align stroke to outside">
+                      <svg viewBox="0 0 20 14"><rect x="5" y="4.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="1"/><rect x="4" y="3.5" width="12" height="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="stroke-detail-row">
                   <label>Cap</label>
                   <div class="btn-group" id="stroke-caps">
                     <button data-cap="butt" class="active" title="Butt Cap">
@@ -392,8 +406,17 @@
                   </div>
                 </div>
                 <div class="stroke-detail-row">
+                  <label>Miter</label>
+                  <input type="number" id="stroke-miterlimit" value="4" min="1" step="0.5" title="Miter limit — how far a miter join may extend before it is clipped to a bevel" />
+                </div>
+                <div class="stroke-detail-row">
                   <label>Dash</label>
                   <input type="text" id="stroke-dash" value="" placeholder="e.g. 5,3" />
+                  <input type="number" id="stroke-dashoffset" value="0" step="1" title="Dash offset — shifts where the dash pattern starts" style="flex:0 0 46px" />
+                </div>
+                <div class="stroke-detail-row">
+                  <label for="stroke-nonscaling">Fixed</label>
+                  <input type="checkbox" id="stroke-nonscaling" title="Fixed width — keep the stroke a constant on-screen width regardless of zoom or scaling (vector-effect: non-scaling-stroke)" style="margin-left:auto; flex:0 0 auto;" />
                 </div>
               </div>
               <div class="appearance-row">
