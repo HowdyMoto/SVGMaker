@@ -20,6 +20,8 @@ export interface ShapeStyle {
   stroke: string;
   strokeWidth: number;
   opacity: number;
+  fillOpacity?: number;   // 0–1, independent of object opacity
+  strokeOpacity?: number; // 0–1, independent of object opacity
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: string;

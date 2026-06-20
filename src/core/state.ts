@@ -56,6 +56,8 @@ export class AppState {
     stroke: '#000000',
     strokeWidth: 1,
     opacity: 1,
+    fillOpacity: 1,
+    strokeOpacity: 1,
     fontSize: 24,
     fontFamily: 'Arial',
     fontWeight: 'normal',
@@ -937,6 +939,8 @@ export class AppState {
     const strokeWidth = parseFloat(el.getAttribute('stroke-width') ?? '1');
     const opacity = parseFloat(el.getAttribute('opacity') ?? '1');
     const style: ShapeStyle = { fill, stroke, strokeWidth, opacity };
+    style.fillOpacity = parseFloat(el.getAttribute('fill-opacity') ?? '1');
+    style.strokeOpacity = parseFloat(el.getAttribute('stroke-opacity') ?? '1');
     style.strokeLinecap = el.getAttribute('stroke-linecap') ?? 'butt';
     style.strokeLinejoin = el.getAttribute('stroke-linejoin') ?? 'miter';
     style.strokeDasharray = el.getAttribute('stroke-dasharray') ?? '';

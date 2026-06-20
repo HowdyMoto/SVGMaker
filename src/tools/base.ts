@@ -37,5 +37,11 @@ export abstract class BaseTool implements Tool {
     if (s.opacity !== 1) {
       el.setAttribute('opacity', String(s.opacity));
     }
+    if ((s.fillOpacity ?? 1) !== 1) {
+      el.setAttribute('fill-opacity', String(s.fillOpacity));
+    }
+    if ((s.strokeOpacity ?? 1) !== 1) {
+      el.setAttribute('stroke-opacity', String(s.strokeOpacity));
+    }
   }
 }

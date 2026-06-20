@@ -1,5 +1,6 @@
 import type { AppState } from '../core/state';
 import { setRotation } from '../core/transform';
+import { populateFontSelect } from '../fonts';
 
 /** Convert SVG fill/stroke values to CSS-renderable backgrounds for preview swatches */
 function paintPreviewBg(value: string, state: AppState): string {
@@ -58,9 +59,14 @@ export function setupProperties(state: AppState): void {
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
   const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
   const opacityVal = document.getElementById('prop-opacity-val')!;
+  const fillOpacityInput = document.getElementById('prop-fill-opacity') as HTMLInputElement;
+  const fillOpacityVal = document.getElementById('prop-fill-opacity-val')!;
+  const strokeOpacityInput = document.getElementById('prop-stroke-opacity') as HTMLInputElement;
+  const strokeOpacityVal = document.getElementById('prop-stroke-opacity-val')!;
   const fontSizeInput = document.getElementById('prop-font-size') as HTMLInputElement;
   const fontFamilyInput = document.getElementById('prop-font-family') as HTMLSelectElement;
-  const fontWeightInput = document.getElementById('prop-font-weight') as HTMLSelectElement;
+  populateFontSelect(fontFamilyInput);
+  const boldBtn = document.getElementById('prop-bold') as HTMLButtonElement;
   const italicBtn = document.getElementById('prop-italic') as HTMLButtonElement;
   const propRx = document.getElementById('prop-rx') as HTMLInputElement;
   const propX = document.getElementById('prop-x') as HTMLInputElement;
@@ -111,15 +117,26 @@ export function setupProperties(state: AppState): void {
     el.setAttribute('opacity', String(opacity));
     shape.style.opacity = opacity;
 
+    const fillOpacity = parseFloat(fillOpacityInput.value);
+    if (fillOpacity < 1) el.setAttribute('fill-opacity', String(fillOpacity));
+    else el.removeAttribute('fill-opacity');
+    shape.style.fillOpacity = fillOpacity;
+
+    const strokeOpacity = parseFloat(strokeOpacityInput.value);
+    if (strokeOpacity < 1) el.setAttribute('stroke-opacity', String(strokeOpacity));
+    else el.removeAttribute('stroke-opacity');
+    shape.style.strokeOpacity = strokeOpacity;
+
     if (shape.type === 'text') {
+      const isBold = boldBtn.classList.contains('active');
+      const isItalic = italicBtn.classList.contains('active');
       el.setAttribute('font-size', fontSizeInput.value);
       el.setAttribute('font-family', fontFamilyInput.value);
-      el.setAttribute('font-weight', fontWeightInput.value);
-      const isItalic = italicBtn.classList.contains('active');
+      el.setAttribute('font-weight', isBold ? 'bold' : 'normal');
       el.setAttribute('font-style', isItalic ? 'italic' : 'normal');
       shape.style.fontSize = parseFloat(fontSizeInput.value);
       shape.style.fontFamily = fontFamilyInput.value;
-      shape.style.fontWeight = fontWeightInput.value;
+      shape.style.fontWeight = isBold ? 'bold' : 'normal';
       shape.style.fontStyle = isItalic ? 'italic' : 'normal';
     }
 
@@ -180,9 +197,11 @@ export function setupProperties(state: AppState): void {
   const updateDefaults = () => {
     state.defaultStyle.strokeWidth = parseFloat(strokeWidthInput.value);
     state.defaultStyle.opacity = parseFloat(opacityInput.value);
+    state.defaultStyle.fillOpacity = parseFloat(fillOpacityInput.value);
+    state.defaultStyle.strokeOpacity = parseFloat(strokeOpacityInput.value);
     state.defaultStyle.fontSize = parseFloat(fontSizeInput.value);
     state.defaultStyle.fontFamily = fontFamilyInput.value;
-    state.defaultStyle.fontWeight = fontWeightInput.value;
+    state.defaultStyle.fontWeight = boldBtn.classList.contains('active') ? 'bold' : 'normal';
     state.defaultStyle.fontStyle = italicBtn.classList.contains('active') ? 'italic' : 'normal';
     state.defaultStyle.rx = parseFloat(propRx.value);
     state.fillNone = fillNoneBtn.classList.contains('active');
@@ -191,6 +210,8 @@ export function setupProperties(state: AppState): void {
 
   const handleChange = () => {
     opacityVal.textContent = `${Math.round(parseFloat(opacityInput.value) * 100)}%`;
+    fillOpacityVal.textContent = `${Math.round(parseFloat(fillOpacityInput.value) * 100)}%`;
+    strokeOpacityVal.textContent = `${Math.round(parseFloat(strokeOpacityInput.value) * 100)}%`;
     const shape = state.getSelectedShape();
     if (shape) applyToShape();
     else updateDefaults();
@@ -203,6 +224,10 @@ export function setupProperties(state: AppState): void {
   });
   strokeNoneBtn.addEventListener('click', () => {
     strokeNoneBtn.classList.toggle('active');
+    handleChange();
+  });
+  boldBtn.addEventListener('click', () => {
+    boldBtn.classList.toggle('active');
     handleChange();
   });
   italicBtn.addEventListener('click', () => {
@@ -270,9 +295,10 @@ export function setupProperties(state: AppState): void {
 
   strokeWidthInput.addEventListener('change', handleChange);
   opacityInput.addEventListener('input', handleChange);
+  fillOpacityInput.addEventListener('input', handleChange);
+  strokeOpacityInput.addEventListener('input', handleChange);
   fontSizeInput.addEventListener('change', handleChange);
   fontFamilyInput.addEventListener('change', handleChange);
-  fontWeightInput.addEventListener('change', handleChange);
   propRx.addEventListener('change', handleChange);
   strokeDash.addEventListener('change', handleChange);
   propX.addEventListener('change', applyPosition);
@@ -337,9 +363,13 @@ export function updatePropertiesPanel(state: AppState): void {
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
   const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
   const opacityVal = document.getElementById('prop-opacity-val')!;
+  const fillOpacityInput = document.getElementById('prop-fill-opacity') as HTMLInputElement;
+  const fillOpacityVal = document.getElementById('prop-fill-opacity-val')!;
+  const strokeOpacityInput = document.getElementById('prop-stroke-opacity') as HTMLInputElement;
+  const strokeOpacityVal = document.getElementById('prop-stroke-opacity-val')!;
   const fontSizeInput = document.getElementById('prop-font-size') as HTMLInputElement;
   const fontFamilyInput = document.getElementById('prop-font-family') as HTMLSelectElement;
-  const fontWeightInput = document.getElementById('prop-font-weight') as HTMLSelectElement;
+  const boldBtn = document.getElementById('prop-bold') as HTMLButtonElement;
   const italicBtn = document.getElementById('prop-italic') as HTMLButtonElement;
   const typePanel = document.getElementById('panel-type')!;
   const propRx = document.getElementById('prop-rx') as HTMLInputElement;
@@ -380,6 +410,12 @@ export function updatePropertiesPanel(state: AppState): void {
     strokeWidthInput.value = String(ds.strokeWidth);
     opacityInput.value = String(ds.opacity);
     opacityVal.textContent = `${Math.round(ds.opacity * 100)}%`;
+    const dfo = ds.fillOpacity ?? 1;
+    fillOpacityInput.value = String(dfo);
+    fillOpacityVal.textContent = `${Math.round(dfo * 100)}%`;
+    const dso = ds.strokeOpacity ?? 1;
+    strokeOpacityInput.value = String(dso);
+    strokeOpacityVal.textContent = `${Math.round(dso * 100)}%`;
     propRx.value = String(ds.rx ?? 0);
     rxRow.style.display = 'none';
     updateNodeRow(state);
@@ -415,6 +451,12 @@ export function updatePropertiesPanel(state: AppState): void {
   strokeWidthInput.value = String(s.strokeWidth);
   opacityInput.value = String(s.opacity);
   opacityVal.textContent = `${Math.round(s.opacity * 100)}%`;
+  const fo = s.fillOpacity ?? 1;
+  fillOpacityInput.value = String(fo);
+  fillOpacityVal.textContent = `${Math.round(fo * 100)}%`;
+  const so = s.strokeOpacity ?? 1;
+  strokeOpacityInput.value = String(so);
+  strokeOpacityVal.textContent = `${Math.round(so * 100)}%`;
   propRx.value = String(s.rx ?? 0);
   rxRow.style.display = shape.type === 'rect' ? '' : 'none';
   updateNodeRow(state);
@@ -435,7 +477,8 @@ export function updatePropertiesPanel(state: AppState): void {
   if (shape.type === 'text') {
     fontSizeInput.value = String(s.fontSize ?? 24);
     fontFamilyInput.value = s.fontFamily ?? 'Arial';
-    fontWeightInput.value = s.fontWeight ?? 'normal';
+    const w = String(s.fontWeight ?? 'normal');
+    boldBtn.classList.toggle('active', w === 'bold' || parseInt(w) >= 600);
     italicBtn.classList.toggle('active', s.fontStyle === 'italic');
   }
 

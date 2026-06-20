@@ -2,7 +2,10 @@ import type { AppState } from '../core/state';
 import type { ExportFormat, Artboard } from '../core/types';
 import { bakeLayerContent } from '../core/bake';
 import { SVG_NS_DECLS } from '../core/svg-ns';
+import { outlineText, buildEmbeddedFontStyle } from '../core/text-outline';
 import { supportsFileSystemAccess, saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
+
+type TextMode = 'keep' | 'outline' | 'embed';
 
 /** Drawing-layer markup, with element transforms baked into geometry if asked. */
 function layerContent(state: AppState, bake: boolean): string {
@@ -111,6 +114,24 @@ export function showExportDialog(state: AppState): void {
   bakeRow.appendChild(bakeText);
   body.appendChild(bakeRow);
 
+  // Text handling (SVG only — raster formats bake text to pixels anyway)
+  const textRow = document.createElement('div');
+  textRow.style.cssText = 'margin-bottom:14px;';
+  textRow.innerHTML = '<label style="display:block; margin-bottom:4px; color:#aaa; font-size:11px;">Text</label>';
+  const textSelect = document.createElement('select');
+  textSelect.style.cssText = 'width:100%; height:28px; background:#1e1e1e; color:#ccc; border:1px solid #4a4a4a; border-radius:3px; padding:0 8px;';
+  textSelect.innerHTML = `
+    <option value="keep">Keep as live text</option>
+    <option value="outline">Convert to outlines (paths)</option>
+    <option value="embed">Embed font data</option>
+  `;
+  textRow.appendChild(textSelect);
+  body.appendChild(textRow);
+  // Only meaningful for SVG output.
+  const syncTextRow = () => { textRow.style.display = formatSelect.value === 'svg' ? '' : 'none'; };
+  formatSelect.addEventListener('change', syncTextRow);
+  syncTextRow();
+
   // Artboard selection
   const abRow = document.createElement('div');
   abRow.style.cssText = 'margin-bottom:14px;';
@@ -172,6 +193,7 @@ export function showExportDialog(state: AppState): void {
     const format = formatSelect.value as ExportFormat;
     const scale = parseInt(scaleSelect.value);
     const bake = bakeCb.checked;
+    const textMode = textSelect.value as TextMode;
     const selectedIds = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
     if (selectedIds.length === 0) { alert('Select at least one artboard.'); return; }
 
@@ -180,7 +202,7 @@ export function showExportDialog(state: AppState): void {
 
     const selectedAbs = state.artboards.filter(ab => selectedIds.includes(ab.id));
     try {
-      await exportArtboards(state, selectedAbs, format, scale, bake);
+      await exportArtboards(state, selectedAbs, format, scale, bake, textMode);
     } catch (err) {
       alert('Export failed: ' + (err instanceof Error ? err.message : err));
     }
@@ -206,9 +228,22 @@ async function exportArtboards(
   format: ExportFormat,
   scale: number,
   bake: boolean,
+  textMode: TextMode = 'keep',
 ): Promise<void> {
-  const drawingSvg = layerContent(state, bake);
-  const defsBlock = state.getDefsBlock();
+  let drawingSvg = layerContent(state, bake);
+  let defsBlock = state.getDefsBlock();
+
+  // Text handling only applies to vector (SVG) output.
+  const warnings: string[] = [];
+  if (format === 'svg' && textMode === 'outline') {
+    const r = await outlineText(drawingSvg);
+    drawingSvg = r.content;
+    warnings.push(...r.warnings);
+  } else if (format === 'svg' && textMode === 'embed') {
+    const r = await buildEmbeddedFontStyle(drawingSvg);
+    if (r.style) defsBlock = r.style + '\n  ' + defsBlock;
+    warnings.push(...r.warnings);
+  }
 
   for (const ab of artboards) {
     const fileName = sanitizeFilename(ab.name);
@@ -226,6 +261,10 @@ async function exportArtboards(
     if (artboards.length > 1) {
       await new Promise(r => setTimeout(r, 300));
     }
+  }
+
+  if (warnings.length) {
+    alert('Export completed with notes:\n\n' + warnings.join('\n'));
   }
 }
 

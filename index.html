@@ -338,6 +338,11 @@
                   <div class="appearance-color-inner" id="prop-fill-preview" style="background:#FFFFFF"></div>
                 </div>
               </div>
+              <div class="appearance-row">
+                <span class="appearance-label">Opacity</span>
+                <input type="range" id="prop-fill-opacity" min="0" max="1" step="0.01" value="1" class="appearance-slider" title="Fill Opacity" />
+                <span id="prop-fill-opacity-val" class="appearance-pct">100%</span>
+              </div>
             </div>
 
             <div class="appearance-divider"></div>
@@ -390,6 +395,11 @@
                   <label>Dash</label>
                   <input type="text" id="stroke-dash" value="" placeholder="e.g. 5,3" />
                 </div>
+              </div>
+              <div class="appearance-row">
+                <span class="appearance-label">Opacity</span>
+                <input type="range" id="prop-stroke-opacity" min="0" max="1" step="0.01" value="1" class="appearance-slider" title="Stroke Opacity" />
+                <span id="prop-stroke-opacity-val" class="appearance-pct">100%</span>
               </div>
             </div>
 
@@ -480,14 +490,11 @@
               </div>
               <div class="panel-field">
                 <label>Style</label>
-                <select id="prop-font-weight">
-                  <option value="normal">Regular</option>
-                  <option value="bold">Bold</option>
-                </select>
+                <div class="text-style-group">
+                  <button id="prop-bold" class="text-style-btn" title="Bold"><b>B</b></button>
+                  <button id="prop-italic" class="text-style-btn" title="Italic"><i>I</i></button>
+                </div>
               </div>
-            </div>
-            <div class="panel-row">
-              <button id="prop-italic" class="text-style-btn" title="Italic">I</button>
             </div>
           </div>
         </div>

@@ -1087,6 +1087,11 @@ input, select, button { font-family: inherit; font-size: 12px; }
 }
 
 /* Type panel */
+.text-style-group {
+  display: flex;
+  gap: 4px;
+}
+
 .text-style-btn {
   width: 26px;
   height: 22px;
@@ -1095,8 +1100,6 @@ input, select, button { font-family: inherit; font-size: 12px; }
   border-radius: 3px;
   color: var(--ai-text);
   cursor: pointer;
-  font-style: italic;
-  font-weight: bold;
   font-family: serif;
   transition: background 0.1s;
 }
