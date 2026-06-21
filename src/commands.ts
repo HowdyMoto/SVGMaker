@@ -14,6 +14,7 @@ import type { ToolName } from './core/types';
 import { exportSVG, importSVG } from './ui/export';
 import { showExportDialog } from './ui/export-dialog';
 import { exportTrack } from './ui/export-track';
+import { showAboutDialog } from './ui/about-dialog';
 import { pickAndImportImage } from './ui/import-image';
 import {
   saveProject,
@@ -58,6 +59,7 @@ const primary = (c: CommandContext) => c.state.getSelectedShape();
 export const COMMANDS: Command[] = [
   // ---- App ----
   { id: 'app.command-palette', label: 'Command Palette…', kind: 'action', accel: 'Mod+K', run: (c) => c.openCommandPalette() },
+  { id: 'app.about', label: 'About SVGMaker…', kind: 'action', run: () => showAboutDialog() },
 
   // ---- File ----
   {

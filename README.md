@@ -2,7 +2,7 @@
 
 A browser-based SVG design editor inspired by Adobe Illustrator, built with TypeScript and Vite. Create, edit, and export vector graphics with a professional-grade interface — no server required.
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Proprietary-red)
 
 ## Features
 
@@ -107,3 +107,7 @@ See [ROADMAP.md](ROADMAP.md) for the full phased plan. Phases 1 and 2 (groups, t
 - **Phase 5** — Rich text, text on path, wrapped text
 - **Phase 6** — SMIL animation, motion paths, CSS animation export
 - **Phase 7** — Hyperlinks, accessibility, metadata
+
+## License
+
+Proprietary — © 2026. All rights reserved. This software is not open source; no license is granted to use, copy, modify, or distribute it without explicit permission.
