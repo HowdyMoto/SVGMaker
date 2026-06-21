@@ -110,4 +110,4 @@ See [ROADMAP.md](ROADMAP.md) for the full phased plan. Phases 1 and 2 (groups, t
 
 ## License
 
-Proprietary — © 2026. All rights reserved. This software is not open source; no license is granted to use, copy, modify, or distribute it without explicit permission.
+Proprietary — © 2026 WrightGeist LLC. All rights reserved. This software is not open source; no license is granted to use, copy, modify, or distribute it without explicit permission.

@@ -294,21 +294,6 @@ input, select, button { font-family: inherit; font-size: 12px; }
   font-size: 11px;
   color: var(--ai-text-dim);
 }
-.about-hint {
-  margin-bottom: 16px;
-  font-size: 12px;
-  color: var(--ai-text);
-}
-.about-hint kbd {
-  display: inline-block;
-  padding: 1px 6px;
-  font-family: inherit;
-  font-size: 11px;
-  color: var(--ai-text-bright);
-  background: var(--ai-input);
-  border: 1px solid var(--ai-border-light);
-  border-radius: 4px;
-}
 .about-copyright {
   font-size: 11px;
   letter-spacing: 0.3px;
