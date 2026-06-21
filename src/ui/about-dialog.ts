@@ -1,4 +1,4 @@
-import { formatAccelerator } from '../commands';
+import { formatAccelerator } from "../commands";
 
 /**
  * A simple, dismissible "About SVGMaker" modal. Self-contained like
@@ -8,42 +8,39 @@ import { formatAccelerator } from '../commands';
  */
 export function showAboutDialog(): void {
   // Singleton — never stack two About dialogs (e.g. menu click + ⌘K).
-  if (document.getElementById('about-overlay')) return;
+  if (document.getElementById("about-overlay")) return;
 
   const prevFocus = document.activeElement as HTMLElement | null;
 
-  const overlay = document.createElement('div');
-  overlay.id = 'about-overlay';
-  overlay.className = 'about-overlay';
+  const overlay = document.createElement("div");
+  overlay.id = "about-overlay";
+  overlay.className = "about-overlay";
 
-  const dialog = document.createElement('div');
-  dialog.className = 'about-dialog';
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'About SVGMaker');
+  const dialog = document.createElement("div");
+  dialog.className = "about-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", "About SVGMaker");
 
   const iconSrc = `${import.meta.env.BASE_URL}icon.svg`;
-  const kbdHint = formatAccelerator('Mod+K');
+  const kbdHint = formatAccelerator("Mod+K");
 
   dialog.innerHTML = `
     <button class="about-close" aria-label="Close">✕</button>
     <img class="about-logo" src="${iconSrc}" alt="" width="72" height="72" />
     <h1 class="about-title">SVGMaker</h1>
     <div class="about-version">Version ${__APP_VERSION__}</div>
-    <p class="about-tagline">A browser-based SVG editor inspired by Adobe Illustrator.</p>
-    <p class="about-desc">Create, edit and export vector graphics — drawing tools, layers,
-      groups, symbols, gradients and multi-artboard support. Everything runs locally in your
-      browser; your files never leave your device.</p>
-    <div class="about-meta">Built with TypeScript &amp; Vite</div>
+    <p class="about-tagline">A browser-based SVG editor.</p>
+  
     <div class="about-hint">Press <kbd>${kbdHint}</kbd> to search every command.</div>
-    <div class="about-copyright">© 2026 · All rights reserved.</div>
+    <div class="about-copyright">© 2026 · All rights reserved. WrightGeist LLC</div>
   `;
 
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 
   const close = (): void => {
-    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener("keydown", onKey, true);
     overlay.remove();
     prevFocus?.focus?.();
   };
@@ -52,13 +49,18 @@ export function showAboutDialog(): void {
   // otherwise a stray tool key (e.g. "V") would switch tools behind the modal.
   // Escape closes; everything else is swallowed while the dialog is open.
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
     e.stopPropagation();
   };
-  document.addEventListener('keydown', onKey, true);
+  document.addEventListener("keydown", onKey, true);
 
-  dialog.querySelector('.about-close')!.addEventListener('click', close);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  dialog.querySelector(".about-close")!.addEventListener("click", close);
+  overlay.addEventListener("mousedown", (e) => {
+    if (e.target === overlay) close();
+  });
 
-  (dialog.querySelector('.about-close') as HTMLButtonElement).focus();
+  (dialog.querySelector(".about-close") as HTMLButtonElement).focus();
 }
