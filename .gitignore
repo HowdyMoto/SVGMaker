@@ -24,5 +24,3 @@ dist-ssr
 *.sw?
 
 .claude/
-# Tauri Rust build artifacts (1.9GB) — never commit
-/src-tauri/target/

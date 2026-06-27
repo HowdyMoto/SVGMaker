@@ -32,6 +32,7 @@ import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
 import { createCommandPalette } from './ui/command-palette';
+import { setupAccountUI } from './ui/account';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
 import type { CommandContext } from './commands';
@@ -308,6 +309,7 @@ setupPathfinder(state);
 if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = state;
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
+setupAccountUI(); // no-op until Supabase env vars are set (see .env.example)
 commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 
 // Initial render

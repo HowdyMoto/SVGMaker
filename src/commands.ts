@@ -16,6 +16,8 @@ import { showExportDialog } from './ui/export-dialog';
 import { exportTrack } from './ui/export-track';
 import { showAboutDialog } from './ui/about-dialog';
 import { pickAndImportImage } from './ui/import-image';
+import { isAuthConfigured } from './lib/supabase';
+import { isSignedIn, showSignInDialog, signOutUser } from './ui/account';
 import {
   saveProject,
   saveProjectAs,
@@ -60,6 +62,10 @@ export const COMMANDS: Command[] = [
   // ---- App ----
   { id: 'app.command-palette', label: 'Command Palette…', kind: 'action', accel: 'Mod+K', run: (c) => c.openCommandPalette() },
   { id: 'app.about', label: 'About SVGMaker…', kind: 'action', run: () => showAboutDialog() },
+
+  // ---- Account ---- (only meaningful when Supabase is configured)
+  { id: 'account.signin', label: 'Sign In…', kind: 'action', enabled: () => isAuthConfigured && !isSignedIn(), run: () => showSignInDialog() },
+  { id: 'account.signout', label: 'Sign Out', kind: 'action', enabled: () => isAuthConfigured && isSignedIn(), run: () => { void signOutUser(); } },
 
   // ---- File ----
   {

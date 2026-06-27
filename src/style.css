@@ -300,6 +300,98 @@ input, select, button { font-family: inherit; font-size: 12px; }
   color: var(--ai-text-dim);
 }
 
+/* --- Account control (menu bar) ------------------------------------------- */
+#account-area {
+  position: relative;
+  margin-left: auto; /* push to the far right of the menu bar */
+  margin-right: 6px;
+}
+#account-btn {
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--ai-text);
+  background: none;
+  border: 1px solid var(--ai-border-light);
+  border-radius: 3px;
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#account-btn:hover {
+  background: var(--ai-menu-hover);
+  color: var(--ai-text-bright);
+}
+.account-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  background: var(--ai-menu-bg);
+  border: 1px solid var(--ai-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  z-index: 300;
+}
+.account-popover-email {
+  padding: 4px 14px 6px;
+  font-size: 11px;
+  color: var(--ai-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ai-border-light);
+  margin-bottom: 4px;
+}
+.account-popover-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--ai-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.account-popover-item:hover {
+  background: var(--ai-menu-hover);
+  color: var(--ai-text-bright);
+}
+
+/* --- Sign-in dialog (extends .about-dialog) ------------------------------- */
+.signin-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 22px 0 6px;
+}
+.signin-provider {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--ai-text-bright);
+  background: var(--ai-panel-darker);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.signin-provider:hover:not(:disabled) {
+  background: var(--ai-menu-hover);
+}
+.signin-provider:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.signin-error {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #ff6b6b;
+  line-height: 1.4;
+}
+
 .menu-divider {
   height: 1px;
   background: var(--ai-border-light);
