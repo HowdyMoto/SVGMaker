@@ -9,9 +9,9 @@ type TextMode = 'keep' | 'outline' | 'embed';
 
 /** Drawing-layer markup, with element transforms baked into geometry if asked. */
 function layerContent(state: AppState, bake: boolean): string {
-  if (!bake) return state.getDrawingLayerSVG();
+  if (!bake) return state.getDrawingLayerSVGForExport();
   const dl = document.getElementById('drawing-layer') as unknown as SVGGElement | null;
-  return dl ? bakeLayerContent(dl).content : state.getDrawingLayerSVG();
+  return dl ? bakeLayerContent(dl).content : state.getDrawingLayerSVGForExport();
 }
 
 /** Export a single artboard straight to an .svg file (used by the panel's per-row button). */
@@ -73,9 +73,9 @@ export function showExportDialog(state: AppState): void {
   const formatSelect = document.createElement('select');
   formatSelect.style.cssText = 'width:100%; height:28px; background:#1e1e1e; color:#ccc; border:1px solid #4a4a4a; border-radius:3px; padding:0 8px;';
   formatSelect.innerHTML = `
-    <option value="svg">SVG (.svg)</option>
-    <option value="png" selected>PNG (.png) - 2x resolution</option>
-    <option value="jpg">JPG (.jpg) - 2x resolution</option>
+    <option value="svg" selected>SVG (.svg)</option>
+    <option value="png">PNG (.png)</option>
+    <option value="jpg">JPG (.jpg)</option>
   `;
   formatRow.appendChild(formatSelect);
   body.appendChild(formatRow);
@@ -95,10 +95,10 @@ export function showExportDialog(state: AppState): void {
   scaleRow.appendChild(scaleSelect);
   body.appendChild(scaleRow);
 
-  // Toggle scale visibility
-  formatSelect.addEventListener('change', () => {
-    scaleRow.style.display = formatSelect.value === 'svg' ? 'none' : '';
-  });
+  // Scale only applies to raster output — hide it for SVG (incl. the default).
+  const syncScaleRow = () => { scaleRow.style.display = formatSelect.value === 'svg' ? 'none' : ''; };
+  formatSelect.addEventListener('change', syncScaleRow);
+  syncScaleRow();
 
   // Bake transforms toggle
   const bakeRow = document.createElement('label');

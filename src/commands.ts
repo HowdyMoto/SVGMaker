@@ -135,6 +135,14 @@ export const COMMANDS: Command[] = [
   { id: 'object.create-symbol', label: 'Create Symbol', kind: 'action', enabled: hasSelection, run: (c) => { const p = primary(c); if (p) c.state.createSymbolFromShape(p.id); } },
   { id: 'object.detach-symbol', label: 'Detach Instance', kind: 'action', enabled: (c) => primary(c)?.type === 'use', run: (c) => { const p = primary(c); if (p) c.state.detachSymbolInstance(p.id); } },
 
+  // ---- Path (Pathfinder / boolean) ----
+  { id: 'path.unite', label: 'Unite', kind: 'action', accel: 'Mod+Alt+U', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('unite'); } },
+  { id: 'path.subtract', label: 'Subtract', kind: 'action', accel: 'Mod+Alt+S', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('subtract'); } },
+  { id: 'path.intersect', label: 'Intersect', kind: 'action', accel: 'Mod+Alt+I', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('intersect'); } },
+  { id: 'path.exclude', label: 'Exclude', kind: 'action', accel: 'Mod+Alt+X', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('exclude'); } },
+  { id: 'path.divide', label: 'Divide', kind: 'action', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('divide'); } },
+  { id: 'path.flatten', label: 'Flatten Compound Shape', kind: 'action', enabled: (c) => primary(c)?.type === 'boolean', run: (c) => { const p = primary(c); if (p) c.state.flattenBoolean(p.id); } },
+
   // ---- View ----
   { id: 'view.zoom-in', label: 'Zoom In', kind: 'action', accel: ['Mod+=', 'Mod+Shift+='], run: (c) => c.canvas.setZoom(c.canvas.getZoom() * 1.25) },
   { id: 'view.zoom-out', label: 'Zoom Out', kind: 'action', accel: 'Mod+-', run: (c) => c.canvas.setZoom(c.canvas.getZoom() / 1.25) },
@@ -153,6 +161,11 @@ export const COMMANDS: Command[] = [
       if (grid) grid.style.display = grid.style.display === 'none' ? '' : 'none';
       c.state.onChange_public();
     },
+  },
+  {
+    id: 'view.toggle-snap', label: 'Smart Guides', kind: 'toggle',
+    checked: (c) => c.state.snapEnabled,
+    run: (c) => { c.state.snapEnabled = !c.state.snapEnabled; },
   },
   {
     // No accelerator: Ctrl+R is reserved for browser reload (intercepting it

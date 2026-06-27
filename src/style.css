@@ -836,7 +836,7 @@ input, select, button { font-family: inherit; font-size: 12px; }
 }
 
 .stroke-details {
-  padding: 6px 0 2px 52px;
+  padding: 6px 0 2px 0;
   overflow: hidden;
   transition: max-height 0.2s ease, opacity 0.15s ease;
   max-height: 200px;
@@ -1896,3 +1896,77 @@ input, select, button { font-family: inherit; font-size: 12px; }
 
 /* ============ RESPONSIVE HELPERS ============ */
 .hidden { display: none !important; }
+
+/* ============ LIVE BOOLEAN (PATHFINDER) ============ */
+/* Operands are the editable source of truth but are hidden in normal view — the
+   cached <path data-bool-result> is what the user sees. Hiding via CSS (not a
+   markup attribute) keeps document/export markup canonical; operands are stripped
+   on export. display:none also makes the wrapper's bbox hug the result. */
+g[data-boolean] > [data-bool-operand] { display: none; }
+
+/* Isolation mode (double-click): reveal operands as ghosted, editable scaffolding
+   and dim the result so the operands are easy to grab. Non-destructive — each
+   operand's real paint stays in its attributes and is restored on exit. */
+g[data-boolean][data-bool-editing] > [data-bool-operand] {
+  display: inline;
+  fill: rgba(45, 127, 249, 0.05);
+  stroke: #2d7ff9;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 4 3;
+}
+g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
+
+/* Pathfinder panel rows */
+.pathfinder-buttons button:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.pathfinder-row { display: flex; gap: 6px; margin-top: 8px; }
+.pf-text-btn {
+  flex: 1;
+  font-size: 11px;
+  padding: 4px 6px;
+  border: 1px solid var(--ai-border, #3a3a3a);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ai-text, #ddd);
+  cursor: pointer;
+}
+.pf-text-btn:hover { background: var(--ai-hover, rgba(255,255,255,0.06)); }
+.pf-text-btn.active { background: #2d7ff9; border-color: #2d7ff9; color: #fff; }
+.pathfinder-hint { margin-top: 6px; font-size: 10px; color: var(--ai-text-dim, #888); text-align: center; }
+
+/* Contextual Pathfinder popover (floats over the selection) */
+.pathfinder-popover {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--ai-panel, #2a2a2a);
+  border: 1px solid var(--ai-border, #444);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.pathfinder-popover[hidden] { display: none; }
+.pathfinder-popover button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ai-text, #ddd);
+  cursor: pointer;
+}
+.pathfinder-popover button:hover { background: var(--ai-hover, rgba(255,255,255,0.08)); color: #fff; }
+.pathfinder-popover button svg { width: 22px; height: 14px; }
+.pathfinder-popover .pf-pop-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--ai-border, #444);
+}
+.pathfinder-popover .pf-pop-swap.active { background: #2d7ff9; color: #fff; }

@@ -8,7 +8,7 @@ const SVG_PICKER_TYPES = [
 ];
 
 export async function exportSVG(state: AppState): Promise<void> {
-  let content = state.getDrawingLayerSVG();
+  let content = state.getDrawingLayerSVGForExport();
   if (state.bakeTransformsOnExport) {
     const drawingLayer = document.getElementById('drawing-layer') as unknown as SVGGElement | null;
     if (drawingLayer) {
@@ -61,7 +61,7 @@ export function importSVG(state: AppState): void {
 }
 
 export function exportPNG(state: AppState): void {
-  const content = state.getDrawingLayerSVG();
+  const content = state.getDrawingLayerSVGForExport();
   const ab = state.artboard;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${state.getDefsBlock()}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
 

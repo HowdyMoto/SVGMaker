@@ -38,6 +38,50 @@ function appendResizeHandles(parent: SVGElement, x: number, y: number, w: number
   }
 }
 
+/**
+ * Illustrator-style "live corner" widgets for rounded rectangles: a small
+ * circular handle inset diagonally from each corner by the current radius.
+ * Dragging one (handled in SelectTool via the `radius-*` data-handle) adjusts
+ * the uniform corner radius. Hidden when the radius is 0 so it can't collide
+ * with the square resize handles sitting on the corners.
+ */
+function appendRadiusHandles(parent: SVGElement, x: number, y: number, w: number, h: number, r: number): void {
+  const maxR = Math.min(w, h) / 2;
+  const rr = Math.max(0, Math.min(r, maxR));
+  if (rr <= 0) return;
+  const corners = [
+    { id: 'radius-nw', cx: x + rr, cy: y + rr },
+    { id: 'radius-ne', cx: x + w - rr, cy: y + rr },
+    { id: 'radius-se', cx: x + w - rr, cy: y + h - rr },
+    { id: 'radius-sw', cx: x + rr, cy: y + h - rr },
+  ];
+  for (const c of corners) {
+    // Large invisible hit area so the handle is easy to grab without
+    // accidentally clicking through to the shape underneath.
+    const hit = document.createElementNS(NS, 'circle');
+    hit.setAttribute('cx', String(c.cx));
+    hit.setAttribute('cy', String(c.cy));
+    hit.setAttribute('r', '9');
+    hit.setAttribute('fill', 'transparent');
+    hit.setAttribute('stroke', 'none');
+    hit.setAttribute('pointer-events', 'all');
+    hit.setAttribute('data-handle', c.id);
+    hit.setAttribute('style', 'cursor: pointer');
+    parent.appendChild(hit);
+
+    // Visible dot (clicks pass through it to the hit area above).
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', String(c.cx));
+    dot.setAttribute('cy', String(c.cy));
+    dot.setAttribute('r', '4');
+    dot.setAttribute('fill', 'white');
+    dot.setAttribute('stroke', '#20a0ff');
+    dot.setAttribute('stroke-width', '1.5');
+    dot.setAttribute('pointer-events', 'none');
+    parent.appendChild(dot);
+  }
+}
+
 export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElement): void {
   // Preserve marquee rect if it exists
   const marquee = selectionLayer.querySelector('#marquee-rect');
@@ -46,6 +90,9 @@ export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElem
 
   // While node-editing a path, the node overlay owns the display.
   if (state.editingPathId) return;
+
+  // Show which group is "entered" (double-click isolation), if any.
+  drawActiveGroupOutline(state, selectionLayer);
 
   const selectedIds = state.selectedShapeIds;
   if (selectedIds.length === 0) return;
@@ -60,6 +107,32 @@ export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElem
   const shape = state.getSelectedShape();
   if (!shape) return;
   drawSingleSelection(shape, selectionLayer);
+}
+
+/** Faint dashed box around the group the user has entered (isolation mode). */
+function drawActiveGroupOutline(state: AppState, selectionLayer: SVGGElement): void {
+  const id = state.activeGroupId;
+  if (!id) return;
+  const shape = state.findShapeById(id);
+  if (!shape) return;
+  const el = shape.element as unknown as SVGGraphicsElement;
+  let bbox: DOMRect;
+  try { bbox = el.getBBox(); } catch { return; }
+  if (bbox.width === 0 && bbox.height === 0) return;
+
+  const g = document.createElementNS(NS, 'g');
+  // Position via the element's screen transform so ancestor group transforms are included.
+  const ref = selectionLayer.getScreenCTM();
+  const own = el.getScreenCTM();
+  if (ref && own) {
+    const m = ref.inverse().multiply(own);
+    g.setAttribute('transform', `matrix(${m.a},${m.b},${m.c},${m.d},${m.e},${m.f})`);
+  }
+  appendRect(g, bbox.x, bbox.y, bbox.width, bbox.height, {
+    fill: 'none', stroke: '#20a0ff', strokeWidth: '1',
+    strokeDasharray: '3,3', opacity: '0.5', pointerEvents: 'none',
+  });
+  selectionLayer.appendChild(g);
 }
 
 function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): void {
@@ -93,6 +166,13 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
 
   // Blue bounding rect
   appendRect(overlayGroup, x, y, w, h, { fill: 'none', stroke: '#20a0ff', strokeWidth: '1', pointerEvents: 'none' });
+
+  // Live corner-radius handles for rounded rectangles. Drawn before the resize
+  // handles so the corner squares stay on top and win clicks right at the corner.
+  if (shape.type === 'rect' && el.tagName.toLowerCase() === 'rect') {
+    const rx = parseFloat(el.getAttribute('rx') ?? '') || shape.style.rx || 0;
+    appendRadiusHandles(overlayGroup, x, y, w, h, rx);
+  }
 
   appendResizeHandles(overlayGroup, x, y, w, h);
 

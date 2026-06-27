@@ -41,7 +41,7 @@ export interface ShapeStyle {
 
 export interface ShapeData {
   id: string;
-  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use';
+  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean';
   element: SVGElement;
   name: string;
   style: ShapeStyle;
@@ -51,6 +51,10 @@ export interface ShapeData {
   parentId?: string;
   rotation?: number;
   symbolId?: string; // for 'use' type, references a symbol in defs
+  /** For 'boolean' (live compound shape): which Pathfinder op produced it. The
+   *  `children` are the editable operands; a cached <path data-bool-result> child
+   *  holds the computed geometry. See core/boolean.ts and AppState.createBoolean. */
+  booleanOp?: 'unite' | 'subtract' | 'intersect' | 'exclude';
 }
 
 export interface SymbolDef {
