@@ -64,8 +64,6 @@ export function setupProperties(state: AppState): void {
   const fillNoneBtn = document.getElementById('prop-fill-none') as HTMLButtonElement;
   const strokeNoneBtn = document.getElementById('prop-stroke-none') as HTMLButtonElement;
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
-  const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
-  const opacityVal = document.getElementById('prop-opacity-val')!;
   const fillOpacityInput = document.getElementById('prop-fill-opacity') as HTMLInputElement;
   const fillOpacityVal = document.getElementById('prop-fill-opacity-val')!;
   const strokeOpacityInput = document.getElementById('prop-stroke-opacity') as HTMLInputElement;
@@ -88,7 +86,6 @@ export function setupProperties(state: AppState): void {
   const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
   const ctrlStrokeNone = document.getElementById('ctrl-stroke-none') as HTMLButtonElement;
   const ctrlStrokeWeight = document.getElementById('ctrl-stroke-weight') as HTMLInputElement;
-  const ctrlOpacity = document.getElementById('ctrl-opacity') as HTMLInputElement;
   const ctrlX = document.getElementById('ctrl-x') as HTMLInputElement;
   const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
   const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
@@ -127,10 +124,6 @@ export function setupProperties(state: AppState): void {
     // inside/outside-aligned); here we just record the authored width.
     const authoredWidth = parseFloat(strokeWidthInput.value) || 0;
     shape.style.strokeWidth = authoredWidth;
-
-    const opacity = parseFloat(opacityInput.value);
-    el.setAttribute('opacity', String(opacity));
-    shape.style.opacity = opacity;
 
     const fillOpacity = parseFloat(fillOpacityInput.value);
     if (fillOpacity < 1) el.setAttribute('fill-opacity', String(fillOpacity));
@@ -231,7 +224,6 @@ export function setupProperties(state: AppState): void {
 
   const updateDefaults = () => {
     state.defaultStyle.strokeWidth = parseFloat(strokeWidthInput.value);
-    state.defaultStyle.opacity = parseFloat(opacityInput.value);
     state.defaultStyle.fillOpacity = parseFloat(fillOpacityInput.value);
     state.defaultStyle.strokeOpacity = parseFloat(strokeOpacityInput.value);
     state.defaultStyle.fontSize = parseFloat(fontSizeInput.value);
@@ -248,7 +240,6 @@ export function setupProperties(state: AppState): void {
   };
 
   const handleChange = () => {
-    opacityVal.textContent = `${Math.round(parseFloat(opacityInput.value) * 100)}%`;
     fillOpacityVal.textContent = `${Math.round(parseFloat(fillOpacityInput.value) * 100)}%`;
     strokeOpacityVal.textContent = `${Math.round(parseFloat(strokeOpacityInput.value) * 100)}%`;
     const shape = state.getSelectedShape();
@@ -300,7 +291,6 @@ export function setupProperties(state: AppState): void {
     }
     strokeWidthInput.value = ctrlStrokeWeight.value;
     strokeWeight.value = ctrlStrokeWeight.value;
-    opacityInput.value = String(parseFloat(ctrlOpacity.value) / 100);
     handleChange();
   };
 
@@ -315,7 +305,6 @@ export function setupProperties(state: AppState): void {
   ctrlFill.addEventListener('input', syncFromCtrl);
   ctrlStroke.addEventListener('input', syncFromCtrl);
   ctrlStrokeWeight.addEventListener('change', syncFromCtrl);
-  ctrlOpacity.addEventListener('change', syncFromCtrl);
   ctrlX.addEventListener('change', syncPosFromCtrl);
   ctrlY.addEventListener('change', syncPosFromCtrl);
   ctrlW.addEventListener('change', syncPosFromCtrl);
@@ -333,7 +322,6 @@ export function setupProperties(state: AppState): void {
   });
 
   strokeWidthInput.addEventListener('change', handleChange);
-  opacityInput.addEventListener('input', handleChange);
   fillOpacityInput.addEventListener('input', handleChange);
   strokeOpacityInput.addEventListener('input', handleChange);
   fontSizeInput.addEventListener('change', handleChange);
@@ -413,8 +401,6 @@ export function updatePropertiesPanel(state: AppState): void {
   const fillPreview = document.getElementById('prop-fill-preview') as HTMLElement;
   const strokePreview = document.getElementById('prop-stroke-preview') as HTMLElement;
   const strokeWidthInput = document.getElementById('prop-stroke-width') as HTMLInputElement;
-  const opacityInput = document.getElementById('prop-opacity') as HTMLInputElement;
-  const opacityVal = document.getElementById('prop-opacity-val')!;
   const fillOpacityInput = document.getElementById('prop-fill-opacity') as HTMLInputElement;
   const fillOpacityVal = document.getElementById('prop-fill-opacity-val')!;
   const strokeOpacityInput = document.getElementById('prop-stroke-opacity') as HTMLInputElement;
@@ -444,7 +430,6 @@ export function updatePropertiesPanel(state: AppState): void {
   const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
   const ctrlStrokeNone = document.getElementById('ctrl-stroke-none') as HTMLButtonElement;
   const ctrlStrokeWeight = document.getElementById('ctrl-stroke-weight') as HTMLInputElement;
-  const ctrlOpacity = document.getElementById('ctrl-opacity') as HTMLInputElement;
   const ctrlX = document.getElementById('ctrl-x') as HTMLInputElement;
   const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
   const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
@@ -464,8 +449,6 @@ export function updatePropertiesPanel(state: AppState): void {
     fillPreview.style.background = state.fillNone ? 'transparent' : paintPreviewBg(ds.fill, state);
     strokePreview.style.background = state.strokeNone ? 'transparent' : paintPreviewBg(ds.stroke, state);
     strokeWidthInput.value = String(ds.strokeWidth);
-    opacityInput.value = String(ds.opacity);
-    opacityVal.textContent = `${Math.round(ds.opacity * 100)}%`;
     const dfo = ds.fillOpacity ?? 1;
     fillOpacityInput.value = String(dfo);
     fillOpacityVal.textContent = `${Math.round(dfo * 100)}%`;
@@ -484,7 +467,6 @@ export function updatePropertiesPanel(state: AppState): void {
     ctrlStroke.value = (ds.stroke === 'none' || ds.stroke.startsWith('url(')) ? '#000000' : ds.stroke;
     ctrlStrokeNone.classList.toggle('active', state.strokeNone);
     ctrlStrokeWeight.value = String(ds.strokeWidth);
-    ctrlOpacity.value = String(Math.round(ds.opacity * 100));
     ctrlX.value = '0'; ctrlY.value = '0'; ctrlW.value = '0'; ctrlH.value = '0';
     ctrlRotation.value = '0';
     strokeWeight.value = String(ds.strokeWidth);
@@ -509,8 +491,6 @@ export function updatePropertiesPanel(state: AppState): void {
   fillPreview.style.background = isFillNone ? 'transparent' : paintPreviewBg(s.fill, state);
   strokePreview.style.background = isStrokeNone ? 'transparent' : paintPreviewBg(s.stroke, state);
   strokeWidthInput.value = String(s.strokeWidth);
-  opacityInput.value = String(s.opacity);
-  opacityVal.textContent = `${Math.round(s.opacity * 100)}%`;
   const fo = s.fillOpacity ?? 1;
   fillOpacityInput.value = String(fo);
   fillOpacityVal.textContent = `${Math.round(fo * 100)}%`;
@@ -532,7 +512,6 @@ export function updatePropertiesPanel(state: AppState): void {
   ctrlStroke.value = (isStrokeNone || s.stroke.startsWith('url(')) ? '#000000' : s.stroke;
   ctrlStrokeNone.classList.toggle('active', isStrokeNone);
   ctrlStrokeWeight.value = String(s.strokeWidth);
-  ctrlOpacity.value = String(Math.round(s.opacity * 100));
 
   fillSwatch.style.background = isFillNone ? 'transparent' : paintPreviewBg(s.fill, state);
   strokeSwatch.style.borderColor = isStrokeNone ? 'transparent' : (s.stroke.startsWith('url(') ? '#888' : s.stroke);

@@ -1,7 +1,12 @@
 import { BaseTool } from './base';
-import type { Point, ShapeData } from '../core/types';
+import type { Point, ShapeData, BBox } from '../core/types';
 import { scalePathData } from '../core/path-model';
 import { nudgeTranslate, setRotation, getRotation } from '../core/transform';
+import {
+  collectSnapTargets, computeSnap, computeResizeSnap,
+  drawSnapGuides, clearSnapGuides, SNAP_PX,
+  type SnapTargets,
+} from '../core/snapping';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -10,10 +15,19 @@ export class SelectTool extends BaseTool {
 
   // Drag-move state
   private dragging = false;
-  private dragLastPt: Point = { x: 0, y: 0 };
   // Shapes being dragged, resolved once at drag start so the per-frame move
   // loop doesn't re-walk the shape tree (findShapeById is O(n)) every mousemove.
   private dragShapes: ShapeData[] = [];
+
+  // Smart-guide (snapping) state, captured once at gesture start. Drag uses an
+  // absolute-from-origin model (dragStartPt/BBox + appliedDx/Dy) so snapping can
+  // align to absolute target lines and we re-derive the incremental translate.
+  private dragStartPt: Point = { x: 0, y: 0 };
+  private dragStartBBox: BBox | null = null;
+  private appliedDx = 0;
+  private appliedDy = 0;
+  private snapTargets: SnapTargets | null = null;
+  private _guidesLayer: SVGGElement | null = null;
 
   // Resize state
   private resizing = false;
@@ -39,6 +53,11 @@ export class SelectTool extends BaseTool {
   // doesn't change while rotating, so this avoids a getBBox() reflow per frame.
   private rotatePivotLocal: Point | null = null;
 
+  // Corner-radius drag state (rounded-rect live corner handles)
+  private radiusing = false;
+  private radiusHandle = '';
+  private radiusOrigBBox: DOMRect | null = null;
+
   // Multi-transform state
   private multiOrigTransforms: Map<string, string> = new Map();
   private multiOrigBBoxes: Map<string, DOMRect> = new Map();
@@ -48,6 +67,24 @@ export class SelectTool extends BaseTool {
   private marquee = false;
   private marqueeStart: Point = { x: 0, y: 0 };
   private marqueeRect: SVGRectElement | null = null;
+
+  private get guidesLayer(): SVGGElement {
+    if (!this._guidesLayer) {
+      this._guidesLayer = this.svgCanvas.querySelector('#guides-layer') as SVGGElement;
+    }
+    return this._guidesLayer;
+  }
+
+  /** Capture the snap baseline at drag start: origin point, the combined bbox of
+   *  the dragged shapes, and the snap targets (artboard + other objects). */
+  private initDragSnap(pt: Point): void {
+    this.dragStartPt = { ...pt };
+    this.appliedDx = 0;
+    this.appliedDy = 0;
+    this.dragStartBBox = this.getScreenSpaceBBox(this.dragShapes);
+    const movingIds = new Set(this.dragShapes.map(s => s.id));
+    this.snapTargets = collectSnapTargets(this.state, movingIds, this.svgCanvas);
+  }
 
   onMouseDown(pt: Point, e: MouseEvent): void {
     // --- Handle click on resize/rotate handle ---
@@ -67,6 +104,15 @@ export class SelectTool extends BaseTool {
           } catch { /* skip */ }
         }
         this.multiCombinedBBox = this.getScreenSpaceBBox(shapes);
+      }
+
+      if (handle.startsWith('radius-')) {
+        // Live corner-radius drag — single rounded-rect only.
+        this.radiusing = true;
+        this.state.setInteractive(true);
+        this.radiusHandle = handle;
+        this.radiusOrigBBox = (shapes[0].element as unknown as SVGGraphicsElement).getBBox();
+        return;
       }
 
       if (handle === 'rotate') {
@@ -105,12 +151,39 @@ export class SelectTool extends BaseTool {
         else if (tag === 'g') this.resizeOrigTransform = el.getAttribute('transform');
         else if (tag === 'text') this.resizeOrigFontSize = parseFloat(el.getAttribute('font-size') ?? '24');
       }
+      this.snapTargets = collectSnapTargets(
+        this.state, new Set(this.state.selectedShapeIds), this.svgCanvas,
+      );
       return;
     }
 
     // --- Check if clicking on a shape ---
     const target = e.target as SVGElement;
-    const shapeEl = this.findShapeElement(target);
+
+    // If a single nested child is already selected and you press on it, drag the
+    // child itself rather than jumping back to its group. This lets a child
+    // picked in the Layers panel be moved on the canvas (no double-click needed)
+    // and keeps an isolated child grabbable. Alt/Shift keep their normal roles.
+    if (!e.shiftKey && !e.altKey && this.state.selectedShapeIds.length === 1) {
+      const sel = this.state.getSelectedShape();
+      if (sel && sel.parentId && sel.element.contains(target)) {
+        this.dragging = true;
+        this.state.setInteractive(true);
+        this.dragShapes = [sel];
+        this.initDragSnap(pt);
+        return;
+      }
+    }
+
+    const deep = e.altKey && !e.shiftKey; // Alt-click reaches the child directly
+    let shapeEl = this.findShapeElement(target, { deep });
+
+    // Clicking outside the entered group leaves isolation, then re-resolves at
+    // the top level so the click selects whatever was actually hit.
+    if (this.state.activeGroupId && shapeEl && !this.isInActiveGroup(shapeEl)) {
+      this.state.exitGroupIsolation();
+      shapeEl = this.findShapeElement(target, { deep });
+    }
 
     if (shapeEl) {
       // Adobe-style: Shift+click toggles add/remove from selection
@@ -127,11 +200,11 @@ export class SelectTool extends BaseTool {
 
       this.dragging = true;
       this.state.setInteractive(true);
-      this.dragLastPt = { ...pt };
       // Resolve the dragged shapes once; reused every mousemove frame.
       this.dragShapes = this.state.selectedShapeIds
         .map(id => this.state.findShapeById(id))
         .filter((s): s is ShapeData => s !== null);
+      this.initDragSnap(pt);
     } else {
       // Clicked on empty space
       const isCanvas = target.id === 'canvas-bg' || target.id === 'canvas-grid' ||
@@ -139,6 +212,8 @@ export class SelectTool extends BaseTool {
         target.closest('#artboards-layer') !== null || target.id === 'pasteboard';
 
       if (isCanvas) {
+        // Clicking empty canvas leaves group isolation.
+        this.state.exitGroupIsolation();
         if (e.button === 1) {
           this.canvas.startPan(e.clientX, e.clientY);
         } else {
@@ -158,6 +233,26 @@ export class SelectTool extends BaseTool {
     // --- Marquee drag ---
     if (this.marquee) {
       this.updateMarqueeRect(pt);
+      return;
+    }
+
+    // --- Corner radius ---
+    if (this.radiusing && this.radiusOrigBBox) {
+      const shape = this.state.getSelectedShape();
+      if (!shape) return;
+      const bb = this.radiusOrigBBox;
+      const corner = this.radiusHandle.slice(7); // 'radius-' is 7 chars
+      // Inward distance from the dragged corner along each axis (best-fit radius
+      // is the average, so the handle tracks the cursor down the diagonal).
+      const sx = corner.includes('w') ? pt.x - bb.x : (bb.x + bb.width) - pt.x;
+      const sy = corner.includes('n') ? pt.y - bb.y : (bb.y + bb.height) - pt.y;
+      const maxR = Math.min(bb.width, bb.height) / 2;
+      let r = Math.max(0, Math.min((sx + sy) / 2, maxR));
+      r = Math.round(r * 10) / 10;
+      shape.element.setAttribute('rx', String(r));
+      shape.element.removeAttribute('ry'); // keep corners uniform
+      shape.style.rx = r;
+      this.state.onChange_public();
       return;
     }
 
@@ -191,6 +286,19 @@ export class SelectTool extends BaseTool {
         const c = this.constrainProportional(dx, dy);
         dx = c.dx; dy = c.dy;
       }
+      // Smart-guide snapping of the dragged edge(s). Skipped under Shift, where
+      // it would fight the locked aspect ratio; bypassed while ⌘/Ctrl is held.
+      const snapResize = this.state.snapEnabled && !(e.metaKey || e.ctrlKey) && !e.shiftKey;
+      if (snapResize && this.snapTargets) {
+        const r = computeResizeSnap(
+          this.resizeOrigBBox, dx, dy, this.resizeHandle,
+          this.snapTargets, SNAP_PX / this.canvas.getZoom(),
+        );
+        dx = r.dx; dy = r.dy;
+        drawSnapGuides(this.guidesLayer, r.guides);
+      } else {
+        clearSnapGuides(this.guidesLayer);
+      }
       if (this.state.selectedShapeIds.length > 1) {
         this.applyMultiResize(dx, dy);
       } else {
@@ -202,13 +310,36 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    // --- Drag move (incremental translate) ---
+    // --- Drag move (snap-aware, absolute-from-origin) ---
     if (this.dragging) {
-      const dx = pt.x - this.dragLastPt.x;
-      const dy = pt.y - this.dragLastPt.y;
-      if (dx !== 0 || dy !== 0) {
-        for (const s of this.dragShapes) this.translateElement(s.element, dx, dy);
-        this.dragLastPt = { ...pt };
+      const rawDx = pt.x - this.dragStartPt.x;
+      const rawDy = pt.y - this.dragStartPt.y;
+      let totalDx = rawDx, totalDy = rawDy;
+
+      // Snap on by default; hold ⌘/Ctrl to bypass, off via View → Smart Guides.
+      const snapOn = this.state.snapEnabled && !(e.metaKey || e.ctrlKey);
+      if (snapOn && this.dragStartBBox && this.snapTargets) {
+        const moving: BBox = {
+          x: this.dragStartBBox.x + rawDx,
+          y: this.dragStartBBox.y + rawDy,
+          width: this.dragStartBBox.width,
+          height: this.dragStartBBox.height,
+        };
+        const snap = computeSnap(moving, this.snapTargets, SNAP_PX / this.canvas.getZoom());
+        totalDx += snap.dx;
+        totalDy += snap.dy;
+        drawSnapGuides(this.guidesLayer, snap.guides);
+      } else {
+        clearSnapGuides(this.guidesLayer);
+      }
+
+      // Re-derive the incremental delta to feed translateElement().
+      const incDx = totalDx - this.appliedDx;
+      const incDy = totalDy - this.appliedDy;
+      if (incDx !== 0 || incDy !== 0) {
+        for (const s of this.dragShapes) this.translateElement(s.element, incDx, incDy);
+        this.appliedDx = totalDx;
+        this.appliedDy = totalDy;
         this.state.onChange_public();
       }
     }
@@ -223,21 +354,71 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    if (this.dragging || this.resizing || this.rotating) {
+    if (this.dragging || this.resizing || this.rotating || this.radiusing) {
       this.state.saveHistory();
       this.dragging = false;
       this.resizing = false;
       this.rotating = false;
+      this.radiusing = false;
+      this.radiusOrigBBox = null;
       this.resizeOrigBBox = null;
       this.resizeOrigGeometry = null;
       this.resizeOrigTransform = null;
       this.resizeOrigFontSize = 0;
+      // Clear smart-guide overlay and snap baseline.
+      clearSnapGuides(this.guidesLayer);
+      this.snapTargets = null;
+      this.dragStartBBox = null;
       // Gesture done: leave interactive mode and do one full render so the side
       // panels catch up with the final geometry.
       this.state.setInteractive(false);
       this.state.onChange_public();
     }
     this.canvas.endPan();
+  }
+
+  /**
+   * Double-click drills one level toward the clicked shape: it enters the group
+   * currently selectable under the cursor (Adobe-style isolation) and selects
+   * that group's child on the click path. Repeated double-clicks descend deeper;
+   * double-clicking empty canvas exits isolation.
+   */
+  onDoubleClick(_pt: Point, e: MouseEvent): void {
+    const target = e.target as SVGElement;
+    const chain = this.shapeChain(target);
+    if (chain.length === 0) { this.state.exitGroupIsolation(); return; }
+
+    const deepest = chain[0];
+    const current = this.findShapeElement(target); // selectable element at this level
+    if (!current) { this.state.exitGroupIsolation(); return; }
+
+    // A live boolean reads as a leaf (operands are hidden), but double-click should
+    // enter it for operand editing rather than just re-selecting the result.
+    if (this.state.findShapeById(current.id)?.type === 'boolean') {
+      this.state.enterGroup(current.id);
+      this.state.selectShape(null);
+      return;
+    }
+
+    // Already at the leaf — nothing deeper to enter; just select it.
+    if (current === deepest) { this.state.selectShape(current.id); return; }
+
+    // `current` is a group with deeper content on the path: enter it and select
+    // the next level down.
+    if (this.state.findShapeById(current.id)?.type === 'group') {
+      this.state.enterGroup(current.id);
+      const child = this.findShapeElement(target); // now scoped one level deeper
+      this.state.selectShape(child && child !== current ? child.id : current.id);
+    } else {
+      this.state.selectShape(current.id);
+    }
+  }
+
+  onKeyDown(e: KeyboardEvent): void {
+    // Escape steps out of group isolation, keeping the current child selected.
+    if (e.key === 'Escape' && this.state.activeGroupId) {
+      this.state.exitGroupIsolation();
+    }
   }
 
   // ---- Marquee helpers ----
@@ -318,15 +499,52 @@ export class SelectTool extends BaseTool {
 
   // ---- Shape finding ----
 
-  private findShapeElement(target: SVGElement): SVGElement | null {
+  /** The chain of `shape-*` ancestors of `target`, innermost first, up to (and
+   *  not past) #drawing-layer. Empty when the click isn't on a shape. */
+  private shapeChain(target: SVGElement): SVGElement[] {
+    const chain: SVGElement[] = [];
     let el: SVGElement | null = target;
-    let topShape: SVGElement | null = null;
     while (el) {
-      if (el.id && el.id.startsWith('shape-')) topShape = el;
+      if (el.id && el.id.startsWith('shape-')) chain.push(el);
       if (el.id === 'drawing-layer') break;
       el = el.parentElement as SVGElement | null;
     }
-    return topShape;
+    return chain;
+  }
+
+  /**
+   * Resolve a click target to the shape it should select. By default this is the
+   * outermost group (top of the z-stack), so a group drags as a unit. Two things
+   * change that:
+   *  - `opts.deep` (Alt-click): select the innermost shape directly, ignoring grouping.
+   *  - group isolation (state.activeGroupId, set by double-click): select the
+   *    direct child of the entered group along the click path, so children can be
+   *    picked and moved individually. Clicks outside the entered group fall back
+   *    to top-level resolution.
+   */
+  private findShapeElement(target: SVGElement, opts: { deep?: boolean } = {}): SVGElement | null {
+    const chain = this.shapeChain(target);
+    if (chain.length === 0) return null;
+    if (opts.deep) return chain[0];
+
+    const activeId = this.state.activeGroupId;
+    if (activeId) {
+      const activeEl = chain.find(s => s.id === activeId);
+      if (activeEl) {
+        // One level into the entered group, along the click path.
+        return chain.find(s => (s.parentElement as Element | null) === activeEl) ?? activeEl;
+      }
+      // Target is outside the entered group → unscoped (top-level) resolution.
+    }
+    return chain[chain.length - 1];
+  }
+
+  /** Is `el` a descendant of the currently-entered group? */
+  private isInActiveGroup(el: SVGElement | null): boolean {
+    const activeId = this.state.activeGroupId;
+    if (!activeId || !el) return false;
+    const activeEl = document.getElementById(activeId) as Element | null;
+    return !!activeEl && activeEl !== el && activeEl.contains(el);
   }
 
   private getSelectedShapes(): ShapeData[] {
@@ -338,9 +556,19 @@ export class SelectTool extends BaseTool {
 
   // ---- Position helpers ----
 
-  /** Move element by dx,dy in parent coordinate space. Works correctly for rotated elements. */
+  /** Move element by dx,dy (given in #drawing-layer / canvas space). Works for
+   *  rotated elements and for children nested inside transformed groups. */
   private translateElement(el: SVGElement, dx: number, dy: number): void {
     const tag = el.tagName.toLowerCase();
+
+    // A child's geometry lives in its PARENT group's coordinate space. If that
+    // group is scaled/rotated, the canvas-space delta must be mapped into the
+    // group's local space first (a no-op for top-level shapes and identity groups).
+    const parent = el.parentElement as unknown as SVGGraphicsElement | null;
+    if (parent && (parent as unknown as SVGElement).id?.startsWith('shape-')) {
+      const conv = this.toParentDelta(parent, dx, dy);
+      dx = conv.dx; dy = conv.dy;
+    }
 
     // Rotated elements (and groups/paths) move via the typed transform list so
     // any existing rotate/matrix is preserved and composed correctly.
@@ -367,6 +595,26 @@ export class SelectTool extends BaseTool {
       const newPoints = pairs.map(([px, py]) => `${px + dx},${py + dy}`).join(' ');
       el.setAttribute('points', newPoints);
     }
+  }
+
+  /**
+   * Map a delta vector from #drawing-layer (canvas) space into `parentEl`'s local
+   * coordinate space, so a child nested under a scaled/rotated group drags 1:1
+   * with the cursor. Identity ancestors (the common case) return the delta as-is.
+   */
+  private toParentDelta(parentEl: SVGGraphicsElement, dx: number, dy: number): { dx: number; dy: number } {
+    const drawingLayer = this.svgCanvas.querySelector('#drawing-layer') as unknown as SVGGraphicsElement | null;
+    const pCtm = parentEl.getCTM?.();
+    const dCtm = drawingLayer?.getCTM?.();
+    if (!pCtm || !dCtm) return { dx, dy };
+    // m maps parent-local → drawing-layer; we want the reverse for the delta.
+    const m = dCtm.inverse().multiply(pCtm);
+    // Fast path: identity linear part (top-level shapes & untransformed groups).
+    if (m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1) return { dx, dy };
+    const inv = m.inverse();
+    if (!isFinite(inv.a) || !isFinite(inv.d)) return { dx, dy }; // degenerate
+    // Transform as a free vector: only the linear part (ignore translation).
+    return { dx: inv.a * dx + inv.c * dy, dy: inv.b * dx + inv.d * dy };
   }
 
 

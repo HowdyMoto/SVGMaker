@@ -8,6 +8,7 @@ export interface Tool {
   onMouseDown(pt: Point, e: MouseEvent): void;
   onMouseMove(pt: Point, e: MouseEvent): void;
   onMouseUp(pt: Point, e: MouseEvent): void;
+  onDoubleClick?(pt: Point, e: MouseEvent): void;
   onKeyDown?(e: KeyboardEvent): void;
   activate?(): void;
   deactivate?(): void;

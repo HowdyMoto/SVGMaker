@@ -12,6 +12,7 @@
  */
 
 import { transformPathData } from './path-model';
+import { stripBooleanOperands } from './boolean';
 
 const EPS = 1e-6;
 
@@ -56,6 +57,10 @@ export function bakeLayerContent(live: SVGGElement): { content: string; warnings
   const clone = live.cloneNode(true) as SVGGElement;
   bakeChildren(live, clone, layerInv, warnings);
   flattenStrokeAlign(clone, warnings);
+  // Live booleans export as just their (now-baked) result path. Strip AFTER the
+  // bake walk, which pairs live/clone children by index — removing operands early
+  // would misalign that walk for the wrapper.
+  stripBooleanOperands(clone);
   return { content: clone.innerHTML, warnings: [...warnings] };
 }
 

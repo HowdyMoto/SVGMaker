@@ -5,6 +5,10 @@ import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
+import {
+  type BooleanOp, ensureBooleanEngine, booleanEngineReady, computeBoolean, elementPathData,
+  stripBooleanOperands, localPathData,
+} from './boolean';
 
 /** One copied shape, captured as serialized markup so paste is self-contained. */
 interface ClipboardEntry {
@@ -29,10 +33,19 @@ export class AppState {
   get selectedShapeId(): string | null {
     return this.selectedShapeIds.length > 0 ? this.selectedShapeIds[this.selectedShapeIds.length - 1] : null;
   }
+  /** Group the user has "entered" via double-click (Adobe-style isolation), so
+   *  canvas clicks select its direct children instead of the group as a whole.
+   *  null = top level. Isolation exit is driven by SelectTool; the scope is
+   *  cleared automatically if the group is later deleted/ungrouped/undone. */
+  activeGroupId: string | null = null;
   // Node-editing session (Direct Selection / Pen). Non-null while a path's
   // anchors are being edited; shared by the tools, overlay, and Properties panel.
   editingPathId: string | null = null;
   pathEdit: PathEditSession | null = null;
+
+  /** Smart guides: snap drag/resize to the artboard and other objects. Toggled
+   *  from View → Smart Guides; held ⌘/Ctrl bypasses it per-gesture. */
+  snapEnabled = true;
 
   private idCounter = 0;
   private abCounter = 0;
@@ -301,6 +314,7 @@ export class AppState {
   removeShape(id: string): void {
     if (!this.detachShape(id)) return;
     this.selectedShapeIds = this.selectedShapeIds.filter(sid => sid !== id);
+    this.clearStaleIsolation();
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -310,6 +324,7 @@ export class AppState {
     if (this.selectedShapeIds.length === 0) return;
     for (const id of [...this.selectedShapeIds]) this.detachShape(id);
     this.selectedShapeIds = [];
+    this.clearStaleIsolation();
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -325,12 +340,51 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  // ---- Group isolation (double-click to edit children on the canvas) ----
+
+  /** Enter a group so canvas clicks select its direct children. No-op if `id`
+   *  is not a group, or it's already the active scope. */
+  enterGroup(id: string): void {
+    const shape = this.findShapeById(id);
+    if (shape?.type !== 'group' && shape?.type !== 'boolean') return;
+    if (this.activeGroupId === id) return;
+    this.exitGroupIsolation();
+    this.activeGroupId = id;
+    // Entering a live boolean reveals its operands for editing (CSS keyed on
+    // data-bool-editing) and warms the engine so recompute stays synchronous.
+    if (shape.type === 'boolean') {
+      shape.element.setAttribute('data-bool-editing', '');
+      void ensureBooleanEngine().then(() => this.onChangeCallback());
+    }
+    this.onChangeCallback();
+  }
+
+  /** Leave group isolation. No-op (and no render) when not isolated, so callers
+   *  can invoke it unconditionally. */
+  exitGroupIsolation(): void {
+    if (!this.activeGroupId) return;
+    this.findShapeById(this.activeGroupId)?.element.removeAttribute('data-bool-editing');
+    this.activeGroupId = null;
+    this.onChangeCallback();
+  }
+
+  /** Drop a dangling isolation scope when its group no longer exists (after
+   *  delete / ungroup / undo). Cheap; called from the few mutation points. */
+  private clearStaleIsolation(): void {
+    if (this.activeGroupId && !this.findShapeById(this.activeGroupId)) this.activeGroupId = null;
+  }
+
   // ---- Node editing ----
 
   /** Begin editing a path's anchors. No-op for non-path shapes. */
   enterPathEdit(id: string): boolean {
     const shape = this.findShapeById(id);
-    if (!shape || shape.type !== 'path' || shape.locked) return false;
+    if (!shape || shape.locked) return false;
+    // A primitive boolean operand (rect/ellipse/…) has no anchors to edit; convert
+    // it to an equivalent <path> in place the first time the user node-edits it.
+    if (shape.type !== 'path') {
+      if (!this.isBooleanOperand(shape) || !this.convertOperandToPath(shape)) return false;
+    }
     const d = shape.element.getAttribute('d');
     if (!d) return false;
     this.editingPathId = id;
@@ -799,8 +853,24 @@ export class AppState {
   }
 
   saveHistory(): void {
+    // When isolated inside a live boolean, an operand was likely just edited —
+    // refresh the cached result path before it is serialized. Synchronous: the
+    // engine was warmed on isolation entry (see enterGroup).
+    if (this.activeGroupId && booleanEngineReady()) {
+      const active = this.findShapeById(this.activeGroupId);
+      if (active?.type === 'boolean') this.recomputeBoolean(active.element);
+    }
+    // Transient editor-only artifacts must never reach a history snapshot: the
+    // `data-bool-editing` reveal hook (would survive undo and show operands) and
+    // any live Pathfinder hover-preview ghost.
+    this.drawingLayer.querySelectorAll('[data-boolean-preview]').forEach((p) => p.remove());
+    const editing = this.drawingLayer.querySelectorAll('[data-bool-editing]');
+    editing.forEach((w) => w.removeAttribute('data-bool-editing'));
+    const svgContent = this.drawingLayer.innerHTML;
+    editing.forEach((w) => w.setAttribute('data-bool-editing', ''));
+
     const entry: HistoryEntry = {
-      svgContent: this.drawingLayer.innerHTML,
+      svgContent,
       selectedId: this.selectedShapeId,
       artboardsJson: JSON.stringify(this.artboards),
     };
@@ -845,6 +915,14 @@ export class AppState {
     this.drawingLayer.innerHTML = sanitizeSvgMarkup(entry.svgContent);
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = entry.selectedId ? [entry.selectedId] : [];
+    // The new DOM lost the transient editing marker (scrubbed before snapshot).
+    // Re-apply it if we're still isolated inside a boolean, so operands re-reveal.
+    this.clearStaleIsolation();
+    if (this.activeGroupId) {
+      const active = this.findShapeById(this.activeGroupId);
+      if (active?.type === 'boolean') active.element.setAttribute('data-bool-editing', '');
+      else this.activeGroupId = null;
+    }
     // Keep any node-editing session in sync with the restored geometry.
     if (this.editingPathId) {
       const shape = this.findShapeById(this.editingPathId);
@@ -909,6 +987,22 @@ export class AppState {
         }
       }
 
+      // A live boolean's children are its operands (marked elements); the
+      // <path data-bool-result> sibling is a managed cache, not a shape.
+      if (type === 'boolean') {
+        shape.booleanOp = (el.getAttribute('data-boolean') as ShapeData['booleanOp']) ?? 'unite';
+        shape.children = [];
+        for (let j = 0; j < el.children.length; j++) {
+          const childEl = el.children[j] as SVGElement;
+          if (!childEl.hasAttribute('data-bool-operand')) continue;
+          const child = processElement(childEl);
+          if (child) {
+            child.parentId = id;
+            shape.children.push(child);
+          }
+        }
+      }
+
       return shape;
     };
 
@@ -917,6 +1011,7 @@ export class AppState {
       if (shape) this.shapes.push(shape);
     }
     this.idCounter = Math.max(this.idCounter, maxId);
+    this.clearStaleIsolation();
   }
 
   private detectType(el: SVGElement): ShapeData['type'] | null {
@@ -928,7 +1023,7 @@ export class AppState {
     if (tag === 'polygon') return 'polygon';
     if (tag === 'path') return 'path';
     if (tag === 'text') return 'text';
-    if (tag === 'g') return 'group';
+    if (tag === 'g') return el.hasAttribute('data-boolean') ? 'boolean' : 'group';
     if (tag === 'image') return 'image';
     if (tag === 'use') return 'use';
     return null;
@@ -959,7 +1054,7 @@ export class AppState {
 
   private readStyle(el: SVGElement, type: ShapeData['type']): ShapeStyle {
     this.flattenInlineStyle(el);
-    if (type === 'group' || type === 'image' || type === 'use') {
+    if (type === 'group' || type === 'image' || type === 'use' || type === 'boolean') {
       return {
         fill: el.getAttribute('fill') ?? 'none',
         stroke: el.getAttribute('stroke') ?? 'none',
@@ -1159,8 +1254,245 @@ export class AppState {
     // Replace group in shapes array with its children
     this.shapes.splice(idx, 1, ...children);
     this.selectedShapeIds = children.map(c => c.id);
+    this.clearStaleIsolation();
     this.saveHistory();
     this.onChangeCallback();
+  }
+
+  // ---- Boolean / Pathfinder (live compound shapes) ----
+
+  /**
+   * Combine the current top-level selection with a Pathfinder op. The four
+   * single-output ops build a LIVE `<g data-boolean>` whose operands stay
+   * editable (double-click to enter isolation) and whose cached result path
+   * recomputes on edit. `divide` produces a plain group of the disjoint pieces.
+   * Operands are taken in document order (bottom→top z), which defines subtract.
+   * Returns false (no-op) when fewer than two shapes are selected or the result
+   * is empty (e.g. intersecting disjoint shapes).
+   */
+  async booleanSelection(op: BooleanOp, reverse = false): Promise<boolean> {
+    const idSet = new Set(this.selectedShapeIds);
+    const operands: ShapeData[] = [];
+    const remaining: ShapeData[] = [];
+    let insertIdx = -1;
+    for (const s of this.shapes) {
+      if (idSet.has(s.id)) {
+        if (insertIdx === -1) insertIdx = remaining.length;
+        operands.push(s);
+      } else {
+        remaining.push(s);
+      }
+    }
+    if (operands.length < 2) return false;
+    if (reverse) operands.reverse(); // Subtract "swap": flip which shape is the cutter.
+
+    await ensureBooleanEngine();
+
+    const operandDs = this.operandDsInLayerSpace(operands);
+    if (!operandDs) return false;
+    const resultDs = computeBoolean(operandDs, op);
+    if (resultDs.length === 0 || resultDs.every((d) => !d.trim())) return false;
+
+    const insertBefore = remaining[insertIdx]?.element ?? null;
+    const newShape = op === 'divide'
+      ? this.buildDivideGroup(operands, resultDs, insertBefore)
+      : this.buildBooleanShape(op, operands, resultDs[0], insertBefore);
+
+    remaining.splice(insertIdx < 0 ? remaining.length : insertIdx, 0, newShape);
+    this.shapes = remaining;
+    this.selectedShapeIds = [newShape.id];
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
+  /** Operand geometry as `d` strings in drawing-layer space (the common space the
+   *  result lives in). Returns null if the layer isn't currently rendered. */
+  private operandDsInLayerSpace(operands: ShapeData[]): string[] | null {
+    const layerCtm = this.drawingLayer.getScreenCTM();
+    if (!layerCtm) return null;
+    const layerInv = layerCtm.inverse();
+    return operands.map((s) => {
+      const ctm = (s.element as unknown as SVGGraphicsElement).getScreenCTM();
+      return ctm ? elementPathData(s.element, layerInv.multiply(ctm)) : '';
+    });
+  }
+
+  /**
+   * Non-mutating preview of a boolean over the current selection, in drawing-layer
+   * space — used by the Pathfinder panel to ghost the result on hover. Synchronous;
+   * returns [] if the engine isn't loaded yet or fewer than two shapes are selected.
+   */
+  previewSelectionBoolean(op: BooleanOp, reverse = false): string[] {
+    if (!booleanEngineReady()) return [];
+    const operands = this.shapes.filter((s) => this.selectedShapeIds.includes(s.id));
+    if (operands.length < 2) return [];
+    if (reverse) operands.reverse();
+    const operandDs = this.operandDsInLayerSpace(operands);
+    if (!operandDs) return [];
+    return computeBoolean(operandDs, op);
+  }
+
+  /** Assemble the live `<g data-boolean>` wrapper from operand shapes. */
+  private buildBooleanShape(
+    op: BooleanOp, operands: ShapeData[], resultD: string, insertBefore: SVGElement | null,
+  ): ShapeData {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const gEl = document.createElementNS(SVG, 'g');
+    const id = this.nextId();
+    gEl.id = id;
+    const name = `${op[0].toUpperCase()}${op.slice(1)} ${id.replace('shape-', '#')}`;
+    gEl.setAttribute('data-name', name);
+    gEl.setAttribute('data-boolean', op);
+    gEl.setAttribute('fill-rule', 'evenodd');
+    // Result paint comes from the wrapper, seeded from the bottom operand.
+    const base = operands[0].element;
+    for (const attr of ['fill', 'stroke', 'stroke-width', 'opacity', 'fill-opacity', 'stroke-opacity']) {
+      const v = base.getAttribute(attr);
+      if (v != null) gEl.setAttribute(attr, v);
+    }
+
+    // Move operand elements in (bottom→top), tagging them as the editable source.
+    for (const s of operands) {
+      s.element.setAttribute('data-bool-operand', '');
+      gEl.appendChild(s.element);
+      s.parentId = id;
+    }
+    // Cached result path renders on top and inherits the wrapper's paint.
+    const resultEl = document.createElementNS(SVG, 'path');
+    resultEl.setAttribute('data-bool-result', '');
+    resultEl.setAttribute('d', resultD);
+    gEl.appendChild(resultEl);
+
+    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
+    else this.drawingLayer.appendChild(gEl);
+
+    return {
+      id, type: 'boolean', element: gEl, name,
+      style: this.readStyle(gEl, 'boolean'),
+      visible: true, locked: false,
+      booleanOp: op as ShapeData['booleanOp'],
+      children: operands,
+    };
+  }
+
+  /** Divide: replace operands with a plain group of the disjoint region paths. */
+  private buildDivideGroup(
+    operands: ShapeData[], pieceDs: string[], insertBefore: SVGElement | null,
+  ): ShapeData {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const gEl = document.createElementNS(SVG, 'g');
+    const id = this.nextId();
+    gEl.id = id;
+    const name = `Divide ${id.replace('shape-', '#')}`;
+    gEl.setAttribute('data-name', name);
+    const fill = operands[0].element.getAttribute('fill') ?? '#cccccc';
+
+    const children: ShapeData[] = [];
+    for (const d of pieceDs) {
+      if (!d.trim()) continue;
+      const pEl = document.createElementNS(SVG, 'path');
+      const pid = this.nextId();
+      pEl.id = pid;
+      pEl.setAttribute('d', d);
+      pEl.setAttribute('fill', fill);
+      pEl.setAttribute('fill-rule', 'evenodd');
+      pEl.setAttribute('data-name', `Piece ${pid.replace('shape-', '#')}`);
+      gEl.appendChild(pEl);
+      children.push({
+        id: pid, type: 'path', element: pEl, name: `Piece ${pid.replace('shape-', '#')}`,
+        style: this.readStyle(pEl, 'path'), visible: true, locked: false, parentId: id,
+      });
+    }
+    // The originals are consumed by Divide.
+    for (const s of operands) s.element.remove();
+
+    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
+    else this.drawingLayer.appendChild(gEl);
+
+    return {
+      id, type: 'group', element: gEl, name,
+      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
+      visible: true, locked: false, children,
+    };
+  }
+
+  /**
+   * Regenerate a live boolean's cached result path from its current operands.
+   * Operands are read in the wrapper's local space, so any per-operand or
+   * ancestor transform is handled uniformly. No-op if the engine isn't loaded
+   * or operands aren't currently rendered (so it never clobbers with stale data).
+   */
+  recomputeBoolean(wrapperEl: SVGElement): void {
+    if (!booleanEngineReady()) return;
+    const op = (wrapperEl.getAttribute('data-boolean') as BooleanOp) || 'unite';
+    const wrapperCtm = (wrapperEl as unknown as SVGGraphicsElement).getScreenCTM();
+    if (!wrapperCtm) return;
+    const wInv = wrapperCtm.inverse();
+    const operandDs: string[] = [];
+    let resultEl: SVGElement | null = null;
+    for (const child of Array.from(wrapperEl.children)) {
+      const el = child as SVGElement;
+      if (el.hasAttribute('data-bool-result')) { resultEl = el; continue; }
+      if (!el.hasAttribute('data-bool-operand')) continue;
+      const ctm = (el as unknown as SVGGraphicsElement).getScreenCTM();
+      if (!ctm) return; // an operand isn't rendered → abort rather than clobber
+      operandDs.push(elementPathData(el, wInv.multiply(ctm)));
+    }
+    if (!resultEl || operandDs.length < 2) return;
+    const out = computeBoolean(operandDs, op);
+    if (out[0]) resultEl.setAttribute('d', out[0]);
+  }
+
+  /** Commit a live boolean to a plain editable `<path>`, discarding operands. */
+  flattenBoolean(id: string): void {
+    const shape = this.findShapeById(id);
+    if (!shape || shape.type !== 'boolean') return;
+    const wrapper = shape.element;
+    if (booleanEngineReady()) this.recomputeBoolean(wrapper);
+    const result = wrapper.querySelector('[data-bool-result]');
+    const d = result?.getAttribute('d') ?? '';
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.id = id;
+    path.setAttribute('d', d);
+    for (const attr of ['fill', 'stroke', 'stroke-width', 'opacity', 'fill-rule', 'fill-opacity', 'stroke-opacity', 'data-name']) {
+      const v = wrapper.getAttribute(attr);
+      if (v != null) path.setAttribute(attr, v);
+    }
+    this.exitGroupIsolation();
+    wrapper.replaceWith(path);
+    this.rebuildShapesFromDOM();
+    this.selectedShapeIds = [id];
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** True if `shape` is a direct operand of a live boolean wrapper. */
+  private isBooleanOperand(shape: ShapeData): boolean {
+    return shape.element.hasAttribute('data-bool-operand') &&
+      this.findShapeById(shape.parentId ?? '')?.type === 'boolean';
+  }
+
+  /**
+   * Replace a primitive operand element with an equivalent `<path>` in place,
+   * preserving id, paint, transform, and operand tagging, then re-sync the model
+   * so node editing can proceed. Geometry is exact (its local d, transform kept).
+   */
+  private convertOperandToPath(shape: ShapeData): boolean {
+    const el = shape.element;
+    const d = localPathData(el);
+    if (!d.trim()) return false;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    // Carry over everything except the primitive's geometry attributes.
+    const geomAttrs = new Set(['x', 'y', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry', 'points', 'x1', 'y1', 'x2', 'y2']);
+    for (const a of Array.from(el.attributes)) {
+      if (!geomAttrs.has(a.name)) path.setAttribute(a.name, a.value);
+    }
+    path.setAttribute('d', d);
+    el.replaceWith(path);
+    shape.element = path;
+    shape.type = 'path';
+    return true;
   }
 
   private ensureDefs(): SVGDefsElement {
@@ -1558,6 +1890,16 @@ export class AppState {
 
   getDrawingLayerSVG(): string {
     return this.drawingLayer.innerHTML;
+  }
+
+  /** Like {@link getDrawingLayerSVG} but with live-boolean operands stripped, so
+   *  exported files contain only the computed result paths (no hidden source
+   *  geometry). Save/load uses the raw form above to keep booleans editable. */
+  getDrawingLayerSVGForExport(): string {
+    if (!this.drawingLayer.querySelector('[data-boolean]')) return this.drawingLayer.innerHTML;
+    const clone = this.drawingLayer.cloneNode(true) as SVGGElement;
+    stripBooleanOperands(clone);
+    return clone.innerHTML;
   }
 
   clearAll(): void {

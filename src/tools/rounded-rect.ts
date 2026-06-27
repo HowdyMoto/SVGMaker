@@ -16,7 +16,7 @@ export class RoundedRectTool extends BaseTool {
     el.setAttribute('y', String(pt.y));
     el.setAttribute('width', '0');
     el.setAttribute('height', '0');
-    el.setAttribute('rx', String(this.state.defaultStyle.rx ?? 10));
+    el.setAttribute('rx', String((this.state.defaultStyle.rx || 10)));
     this.applyStyle(el);
 
     const guidesLayer = this.svgCanvas.querySelector('#guides-layer')!;
@@ -61,7 +61,7 @@ export class RoundedRectTool extends BaseTool {
     el.setAttribute('y', this.currentEl.getAttribute('y')!);
     el.setAttribute('width', String(w));
     el.setAttribute('height', String(h));
-    el.setAttribute('rx', String(this.state.defaultStyle.rx ?? 10));
+    el.setAttribute('rx', String((this.state.defaultStyle.rx || 10)));
     this.applyStyle(el);
 
     const name = `rounded rect ${id.replace('shape-', '#')}`;
@@ -69,7 +69,7 @@ export class RoundedRectTool extends BaseTool {
 
     this.state.addShape({
       id, type: 'rect', element: el, name,
-      style: { ...this.state.defaultStyle, fill: this.state.fillNone ? 'none' : this.state.defaultStyle.fill, stroke: this.state.strokeNone ? 'none' : this.state.defaultStyle.stroke, rx: this.state.defaultStyle.rx ?? 10 },
+      style: { ...this.state.defaultStyle, fill: this.state.fillNone ? 'none' : this.state.defaultStyle.fill, stroke: this.state.strokeNone ? 'none' : this.state.defaultStyle.stroke, rx: (this.state.defaultStyle.rx || 10) },
       visible: true, locked: false,
     });
     this.currentEl = null;

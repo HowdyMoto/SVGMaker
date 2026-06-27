@@ -87,6 +87,18 @@
             <button data-action="object.show-all">Show All</button>
           </div>
         </div>
+        <div class="menu-dropdown" data-menu="path">
+          <span class="menu-trigger">Path</span>
+          <div class="menu-panel">
+            <button data-action="path.unite">Unite</button>
+            <button data-action="path.subtract">Subtract</button>
+            <button data-action="path.intersect">Intersect</button>
+            <button data-action="path.exclude">Exclude</button>
+            <button data-action="path.divide">Divide</button>
+            <div class="menu-divider"></div>
+            <button data-action="path.flatten">Flatten Compound Shape</button>
+          </div>
+        </div>
         <div class="menu-dropdown" data-menu="view">
           <span class="menu-trigger">View</span>
           <div class="menu-panel">
@@ -97,6 +109,7 @@
             <div class="menu-divider"></div>
             <button data-action="view.toggle-transparency">Show Transparency</button>
             <button data-action="view.toggle-grid">Show Grid</button>
+            <button data-action="view.toggle-snap">Smart Guides</button>
             <button data-action="view.toggle-rulers">Show Rulers</button>
           </div>
         </div>
@@ -137,12 +150,6 @@
           </div>
           <label>Weight:</label>
           <input type="number" id="ctrl-stroke-weight" value="1" min="0" max="200" step="0.5" />
-        </div>
-        <span class="ctrl-sep"></span>
-        <div class="ctrl-group" id="ctrl-opacity-group">
-          <label>Opacity:</label>
-          <input type="number" id="ctrl-opacity" value="100" min="0" max="100" step="1" />
-          <span class="ctrl-unit">%</span>
         </div>
       </div>
     </div>
@@ -424,7 +431,7 @@
                 </div>
                 <div class="stroke-detail-row">
                   <label for="stroke-nonscaling">Fixed</label>
-                  <input type="checkbox" id="stroke-nonscaling" title="Fixed width — keep the stroke a constant on-screen width regardless of zoom or scaling (vector-effect: non-scaling-stroke)" style="margin-left:auto; flex:0 0 auto;" />
+                  <input type="checkbox" id="stroke-nonscaling" title="Fixed width — keep the stroke a constant on-screen width regardless of zoom or scaling (vector-effect: non-scaling-stroke)" style="flex:0 0 auto;" />
                 </div>
               </div>
               <div class="appearance-row">
@@ -451,14 +458,6 @@
               </div>
             </div>
 
-            <div class="appearance-divider"></div>
-
-            <!-- Opacity -->
-            <div class="appearance-row">
-              <span class="appearance-label">Opacity</span>
-              <input type="range" id="prop-opacity" min="0" max="1" step="0.01" value="1" class="appearance-slider" />
-              <span id="prop-opacity-val" class="appearance-pct">100%</span>
-            </div>
           </div>
         </div>
 
@@ -489,6 +488,38 @@
                 <svg viewBox="0 0 20 20"><line x1="2" y1="17" x2="18" y2="17" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="5" width="4" height="12" fill="currentColor"/><rect x="12" y="9" width="4" height="8" fill="currentColor"/></svg>
               </button>
             </div>
+          </div>
+        </div>
+
+        <!-- Pathfinder (boolean ops) -->
+        <div class="panel" id="panel-pathfinder">
+          <div class="panel-header" data-panel="pathfinder">
+            <span>Pathfinder</span>
+            <button class="panel-collapse">&#x25BC;</button>
+          </div>
+          <div class="panel-body">
+            <div class="align-buttons pathfinder-buttons">
+              <button data-bool="unite" title="Unite — merge into one shape">
+                <svg viewBox="0 0 30 18"><circle cx="11" cy="9" r="7" fill="currentColor"/><circle cx="19" cy="9" r="7" fill="currentColor"/></svg>
+              </button>
+              <button data-bool="subtract" title="Subtract — front shape cuts the one behind">
+                <svg viewBox="0 0 30 18"><defs><mask id="pf-sub"><rect x="0" y="0" width="30" height="18" fill="white"/><circle cx="19" cy="9" r="7" fill="black"/></mask></defs><circle cx="19" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"/><circle cx="11" cy="9" r="7" fill="currentColor" mask="url(#pf-sub)"/></svg>
+              </button>
+              <button data-bool="intersect" title="Intersect — keep only the overlap">
+                <svg viewBox="0 0 30 18"><defs><clipPath id="pf-int"><circle cx="19" cy="9" r="7"/></clipPath></defs><circle cx="11" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"/><circle cx="19" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"/><circle cx="11" cy="9" r="7" fill="currentColor" clip-path="url(#pf-int)"/></svg>
+              </button>
+              <button data-bool="exclude" title="Exclude — remove the overlap">
+                <svg viewBox="0 0 30 18"><path fill="currentColor" fill-rule="evenodd" d="M4 9a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z M12 9a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z"/></svg>
+              </button>
+              <button data-bool="divide" title="Divide — split into separate pieces">
+                <svg viewBox="0 0 30 18"><circle cx="11" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="19" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+              </button>
+            </div>
+            <div class="pathfinder-row">
+              <button id="pf-swap" class="pf-text-btn" title="Swap which shape cuts (Subtract)">&#x21C4; Swap order</button>
+              <button id="pf-flatten" class="pf-text-btn" title="Commit this compound shape to a plain path">Flatten</button>
+            </div>
+            <div class="pathfinder-hint" id="pf-hint">Select 2+ shapes</div>
           </div>
         </div>
 

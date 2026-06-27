@@ -25,6 +25,7 @@ import { setupMenus } from './ui/menus';
 import { drawRulers } from './ui/rulers';
 import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
+import { setupPathfinder, updatePathfinderPanel, updatePathfinderPopover } from './ui/pathfinder';
 import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
@@ -116,6 +117,9 @@ function onStateChange(): void {
   renderArtboards(state, svgCanvas);
   updateSelectionOverlay(state, selectionLayer);
   renderNodeOverlay(state, guidesLayer);
+  // The contextual popover tracks the selection (and hides itself mid-gesture),
+  // so update it before the interactive early-return below.
+  updatePathfinderPopover(state);
 
   // The side panels reflect document *structure*, which doesn't change during a
   // drag/resize/rotate — skip their (full innerHTML) rebuilds mid-gesture and
@@ -126,6 +130,7 @@ function onStateChange(): void {
   updateLayersPanel(state);
   updateArtboardsPanel(state);
   updateSymbolsPanel(state);
+  updatePathfinderPanel(state);
 }
 
 function setTool(toolName: ToolName): void {
@@ -179,6 +184,12 @@ svgCanvas.addEventListener('mousedown', (e: MouseEvent) => {
 svgCanvas.addEventListener('mousemove', (e: MouseEvent) => {
   const pt = canvas.screenToSVG(e.clientX, e.clientY);
   activeTool.onMouseMove(pt, e);
+});
+
+svgCanvas.addEventListener('dblclick', (e: MouseEvent) => {
+  if (e.button !== 0) return;
+  const pt = canvas.screenToSVG(e.clientX, e.clientY);
+  activeTool.onDoubleClick?.(pt, e);
 });
 
 window.addEventListener('mouseup', (e: MouseEvent) => {
@@ -276,6 +287,7 @@ document.getElementById('tb-default')?.addEventListener('click', () => runComman
 // Rulers update on view change
 canvas.setOnViewChange(() => {
   drawRulers(canvas);
+  updatePathfinderPopover(state); // keep the floating popover glued to the selection
 });
 
 // Zoom-fit button uses artboard bounds
@@ -291,6 +303,9 @@ setupArtboardButtons(state);
 setupArtboardProps(state);
 setupColorPicker(state);
 setupAlign(state);
+setupPathfinder(state);
+// Dev-only debug handle (stripped from production builds).
+if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = state;
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
 commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
