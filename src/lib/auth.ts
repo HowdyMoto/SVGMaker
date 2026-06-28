@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
 /** OAuth providers we intend to enable in the Supabase dashboard (Phase 1). */
-export type OAuthProvider = 'google' | 'github';
+export type OAuthProvider = 'google' | 'discord';
 
 /**
  * Where the provider sends the browser back to after login. We return to the

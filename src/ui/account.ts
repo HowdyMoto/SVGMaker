@@ -137,7 +137,7 @@ export function showSignInDialog(): void {
     <p class="about-tagline">Save and sync your projects across devices.</p>
     <div class="signin-providers">
       <button class="signin-provider" data-provider="google">Continue with Google</button>
-      <button class="signin-provider" data-provider="github">Continue with GitHub</button>
+      <button class="signin-provider" data-provider="discord">Continue with Discord</button>
     </div>
     <div class="signin-error" hidden></div>
   `;
