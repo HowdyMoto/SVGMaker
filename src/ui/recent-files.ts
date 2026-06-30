@@ -96,9 +96,13 @@ async function refreshRecentMenu(): Promise<void> {
           queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
           requestPermission?: (d: { mode: string }) => Promise<PermissionState>;
         };
+        // Only ask for READ to open — requesting 'readwrite' here pops Chrome's
+        // "Let this site edit / save <file>?" modal just to open a file, which is
+        // baffling. Write permission is requested later, when the user actually
+        // saves (writeHandle → createWritable prompts then), matching File→Open.
         if (handle.queryPermission && handle.requestPermission) {
-          let perm = await handle.queryPermission({ mode: 'readwrite' });
-          if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'readwrite' });
+          let perm = await handle.queryPermission({ mode: 'read' });
+          if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'read' });
           if (perm !== 'granted') return;
         }
         await openHandle(state, entry.handle);
