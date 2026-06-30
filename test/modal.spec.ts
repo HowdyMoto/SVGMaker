@@ -69,3 +69,32 @@ test('Modal: singleton guard prevents stacking', async ({ page }) => {
   });
   await expect(page.locator('#about-overlay')).toHaveCount(1);
 });
+
+test('Components: Export dialog is built from the shared primitives', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.waitForFunction(() => (window as unknown as { state?: unknown }).state, { timeout: 15_000 });
+
+  await page.locator('.menu-dropdown[data-menu="file"] .menu-trigger').click();
+  await page.locator('.menu-panel button[data-action="file.export-artboards"]').click();
+  const overlay = page.locator('#export-dialog-overlay');
+  await expect(overlay).toBeVisible();
+
+  // Built on the Modal primitive + component factories.
+  await expect(overlay.locator('.modal-dialog')).toBeVisible();
+  await expect(overlay.locator('.modal-footer .btn')).toHaveCount(2);
+  await expect(overlay.locator('.btn--primary')).toHaveText('Export');
+  await expect(overlay.locator('.ui-select').first()).toBeVisible();
+
+  // Scale field is hidden for SVG (default) and shown for a raster format.
+  const scaleField = overlay.locator('.field', { hasText: 'Scale' });
+  await expect(scaleField).toBeHidden();
+  await overlay.locator('.field', { hasText: 'Format' }).locator('.ui-select').selectOption('png');
+  await expect(scaleField).toBeVisible();
+
+  // Cancel is a .btn and closes via the Modal lifecycle.
+  await overlay.locator('.modal-footer .btn', { hasText: 'Cancel' }).click();
+  await expect(overlay).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
