@@ -3,21 +3,16 @@ import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
+import { History } from './history';
+import { PaintRegistry } from './paint-registry';
+import { ClipboardManager, type ClipboardHost } from './clipboard';
+import { SymbolRegistry, type SymbolHost } from './symbol-registry';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
   type BooleanOp, ensureBooleanEngine, booleanEngineReady, computeBoolean, elementPathData,
   stripBooleanOperands, localPathData,
 } from './boolean';
-
-/** One copied shape, captured as serialized markup so paste is self-contained. */
-interface ClipboardEntry {
-  markup: string;
-  type: ShapeData['type'];
-  style: ShapeStyle;
-  rotation?: number;
-  symbolId?: string;
-}
 
 /**
  * Built-in editor chrome that lives in the canvas <defs> (the grid background
@@ -60,10 +55,10 @@ export class AppState {
 
   private idCounter = 0;
   private abCounter = 0;
-  private history: HistoryEntry[] = [];
-  private historyIndex = -1;
-  private savedHistoryIndex = 0; // history index matching the last save/open/new
-  private maxHistory = 100;
+  /** Undo/redo stack. Owns the index/branching/cap bookkeeping; this class
+   *  supplies the document capture/restore via {@link captureSnapshot} /
+   *  {@link restoreHistory}. See core/history.ts. */
+  private historyMgr: History;
   private drawingLayer: SVGGElement;
   private onChangeCallback: () => void;
 
@@ -100,6 +95,12 @@ export class AppState {
   strokeNone = false;
   showTransparency = true; // checkerboard background on by default
 
+  /** Set by the last importSVGContent: the source contained SMIL animation
+   *  (<animate>, <animateTransform>, …), which the sanitizer strips. Lets the UI
+   *  warn that the animation was dropped and won't be saved. (CSS animation in a
+   *  <style> block survives and is not flagged.) */
+  lastImportHadAnimation = false;
+
   /**
    * When true, "Export Active Artboard" bakes element transforms into geometry
    * so the SVG contains no transform attributes (for consumers that ignore
@@ -109,14 +110,21 @@ export class AppState {
     try { return localStorage.getItem('svgmaker.bakeTransforms') !== 'false'; } catch { return true; }
   })();
 
-  symbols: SymbolDef[] = [];
-  private symbolCounter = 0;
+  /** <symbol> defs + the shape↔<use> transforms. Extracted to
+   *  core/symbol-registry.ts. `symbols` is a read-only view for the panel and
+   *  export; all mutation goes through the registry. */
+  private symbolRegistry: SymbolRegistry;
+  get symbols(): SymbolDef[] { return this.symbolRegistry.symbols; }
   private defsElement: SVGDefsElement | null = null;
 
-  gradients: GradientDef[] = [];
-  private gradCounter = 0;
-  patterns: PatternDef[] = [];
-  private patternCounter = 0;
+  /** Gradients & patterns: tracked models + their live <defs> elements.
+   *  Extracted to core/paint-registry.ts; AppState delegates the public paint
+   *  methods to it and reaches it for clear/import. */
+  private paint: PaintRegistry;
+
+  /** Cut/copy/paste. Extracted to core/clipboard.ts; reaches the shape model
+   *  through the host adapter built in the constructor. */
+  private clipboardMgr: ClipboardManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -139,6 +147,47 @@ export class AppState {
   constructor(drawingLayer: SVGGElement, onChange: () => void) {
     this.drawingLayer = drawingLayer;
     this.onChangeCallback = onChange;
+    this.historyMgr = new History(
+      () => this.captureSnapshot(),
+      (entry) => this.restoreHistory(entry),
+    );
+    this.paint = new PaintRegistry({
+      ensureDefs: () => this.ensureDefs(),
+      onChange: () => this.onChangeCallback(),
+    });
+    const clipboardHost: ClipboardHost = {
+      getShapes: () => this.shapes,
+      getDrawingLayer: () => this.drawingLayer,
+      getSelectedShapeIds: () => this.selectedShapeIds,
+      setSelection: (ids) => { this.selectedShapeIds = ids; },
+      findShape: (id) => this.findShapeById(id),
+      removeShape: (id) => this.removeShape(id),
+      removeSelected: () => this.removeSelected(),
+      nextId: () => this.nextId(),
+      offsetElement: (el, dx, dy) => this.offsetElement(el, dx, dy),
+      reIdGroupChildren: (el) => this.reIdGroupChildren(el),
+      detectType: (el) => this.detectType(el),
+      readStyle: (el, type) => this.readStyle(el, type),
+      addShape: (shape) => this.addShape(shape),
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.clipboardMgr = new ClipboardManager(clipboardHost);
+    const symbolHost: SymbolHost = {
+      getShapes: () => this.shapes,
+      ensureDefs: () => this.ensureDefs(),
+      nextId: () => this.nextId(),
+      detectType: (el) => this.detectType(el),
+      readStyle: (el, type) => this.readStyle(el, type),
+      getActiveArtboard: () => this.getActiveArtboard(),
+      addShape: (shape) => this.addShape(shape),
+      setSelection: (ids) => { this.selectedShapeIds = ids; },
+      getSelectedSymbolId: () => this.selectedSymbolId,
+      setSelectedSymbolId: (id) => { this.selectedSymbolId = id; },
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.symbolRegistry = new SymbolRegistry(symbolHost);
     // Create default artboard
     this.artboards.push({
       id: this.nextArtboardId(),
@@ -709,147 +758,15 @@ export class AppState {
   }
 
   // ---- Clipboard ----
-  private clipboard: ClipboardEntry[] = [];
-  private pasteOffset = 0;
+  // Cut/copy/paste live in core/clipboard.ts; AppState owns the manager and the
+  // host adapter (built in the constructor) and delegates the public methods.
 
-  private snapshotShape(shape: ShapeData): ClipboardEntry {
-    return {
-      markup: shape.element.outerHTML,
-      type: shape.type,
-      style: { ...shape.style },
-      rotation: shape.rotation,
-      symbolId: shape.symbolId,
-    };
-  }
-
-  /** Replace the clipboard and mirror it to the system clipboard for cross-app paste. */
-  private setClipboard(entries: ClipboardEntry[]): void {
-    this.clipboard = entries;
-    this.pasteOffset = 0;
-    const markup = entries.map(e => e.markup).join('');
-    const svgWrapper = `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
-    navigator.clipboard?.writeText(svgWrapper).catch(() => { /* ignore */ });
-  }
-
-  copyShape(id: string): void {
-    const shape = this.shapes.find(s => s.id === id);
-    if (!shape) return;
-    this.setClipboard([this.snapshotShape(shape)]);
-  }
-
-  /**
-   * Copy the whole current selection (in selection order), resolving nested
-   * shapes too so cut copies exactly what removeSelected deletes.
-   */
-  copySelected(): void {
-    const shapes = this.selectedShapeIds
-      .map(id => this.findShapeById(id))
-      .filter((s): s is ShapeData => s !== null);
-    if (shapes.length === 0) return;
-    this.setClipboard(shapes.map(s => this.snapshotShape(s)));
-  }
-
-  cutShape(id: string): void {
-    this.copyShape(id);
-    this.removeShape(id);
-  }
-
-  cutSelected(): void {
-    this.copySelected();
-    this.removeSelected();
-  }
-
-  /** Paste the internal clipboard. Returns true if anything was pasted. */
-  pasteClipboard(): boolean {
-    if (this.clipboard.length === 0) return false;
-    this.pasteOffset += 10;
-    const newIds: string[] = [];
-    for (const entry of this.clipboard) {
-      const id = this.insertClipboardEntry(entry, this.pasteOffset);
-      if (id) newIds.push(id);
-    }
-    if (newIds.length === 0) return false;
-    this.selectedShapeIds = newIds;
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
-
-  /** Materialize one clipboard entry into the drawing layer; returns the new id. */
-  private insertClipboardEntry(entry: ClipboardEntry, offset: number): string | null {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(
-      `<svg xmlns="http://www.w3.org/2000/svg">${entry.markup}</svg>`,
-      'image/svg+xml'
-    );
-    const srcEl = doc.querySelector('svg')?.firstElementChild as SVGElement | null;
-    if (!srcEl) return null;
-
-    const newEl = document.importNode(srcEl, true) as SVGElement;
-    sanitizeSvgElement(newEl); // strip event handlers / unsafe refs from untrusted markup
-    const newId = this.nextId();
-    newEl.id = newId;
-    const name = `${entry.type} ${newId.replace('shape-', '#')}`;
-    newEl.setAttribute('data-name', name);
-
-    // Offset so the paste doesn't land exactly on top of the original.
-    this.offsetElement(newEl, offset, offset);
-
-    // Re-id nested children so a pasted group doesn't collide with the source.
-    if (entry.type === 'group') this.reIdGroupChildren(newEl);
-
-    this.shapes.push({
-      id: newId,
-      type: entry.type,
-      element: newEl,
-      name,
-      style: { ...entry.style },
-      visible: true,
-      locked: false,
-      rotation: entry.rotation,
-      symbolId: entry.symbolId,
-    });
-    this.drawingLayer.appendChild(newEl);
-    return newId;
-  }
-
-  /** Try to paste SVG content from the system clipboard */
-  async pasteFromSystemClipboard(): Promise<boolean> {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text.includes('<svg') && !text.includes('<SVG')) return false;
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(text, 'image/svg+xml');
-      const svgEl = doc.querySelector('svg');
-      if (!svgEl) return false;
-
-
-      let pasted = false;
-      for (let i = 0; i < svgEl.children.length; i++) {
-        const child = svgEl.children[i];
-        const imported = document.importNode(child, true) as SVGElement;
-        sanitizeSvgElement(imported); // untrusted system-clipboard SVG
-        const type = this.detectType(imported);
-        if (!type) continue;
-
-        const id = this.nextId();
-        imported.id = id;
-        const name = `${type} ${id.replace('shape-', '#')}`;
-        imported.setAttribute('data-name', name);
-
-        this.addShape({
-          id, type, element: imported, name,
-          style: this.readStyle(imported, type),
-          visible: true, locked: false,
-        });
-        pasted = true;
-      }
-      return pasted;
-    } catch {
-      return false;
-    }
-  }
+  copyShape(id: string): void { this.clipboardMgr.copyShape(id); }
+  copySelected(): void { this.clipboardMgr.copySelected(); }
+  cutShape(id: string): void { this.clipboardMgr.cutShape(id); }
+  cutSelected(): void { this.clipboardMgr.cutSelected(); }
+  pasteClipboard(): boolean { return this.clipboardMgr.pasteClipboard(); }
+  pasteFromSystemClipboard(): Promise<boolean> { return this.clipboardMgr.pasteFromSystemClipboard(); }
 
   private offsetElement(el: SVGElement, dx: number, dy: number): void {
     const tag = el.tagName.toLowerCase();
@@ -886,7 +803,17 @@ export class AppState {
     }
   }
 
+  /** Record the current document as an undo step. Delegates the navigation
+   *  bookkeeping to {@link History}; the document-specific snapshot is built by
+   *  {@link captureSnapshot}. */
   saveHistory(): void {
+    this.historyMgr.save();
+  }
+
+  /** Serialize the live document into a history entry (the History `capture`
+   *  callback). Scrubs transient editor-only artifacts so they never reach a
+   *  snapshot. */
+  private captureSnapshot(): HistoryEntry {
     // When isolated inside a live boolean, an operand was likely just edited —
     // refresh the cached result path before it is serialized. Synchronous: the
     // engine was warmed on isolation entry (see enterGroup).
@@ -903,44 +830,25 @@ export class AppState {
     const svgContent = this.drawingLayer.innerHTML;
     editing.forEach((w) => w.setAttribute('data-bool-editing', ''));
 
-    const entry: HistoryEntry = {
+    return {
       svgContent,
       selectedId: this.selectedShapeId,
       artboardsJson: JSON.stringify(this.artboards),
     };
-    // Branching off before a saved-but-undone state discards that saved point.
-    if (this.savedHistoryIndex > this.historyIndex) this.savedHistoryIndex = -1;
-    this.history = this.history.slice(0, this.historyIndex + 1);
-    this.history.push(entry);
-    if (this.history.length > this.maxHistory) {
-      this.history.shift();
-      this.savedHistoryIndex--;
-    }
-    this.historyIndex = this.history.length - 1;
   }
 
   /** True when there are edits since the last save/open/new. */
-  get dirty(): boolean { return this.historyIndex !== this.savedHistoryIndex; }
+  get dirty(): boolean { return this.historyMgr.dirty; }
 
   /** Mark the current state as the saved baseline (call after save/open/new). */
-  markClean(): void { this.savedHistoryIndex = this.historyIndex; }
+  markClean(): void { this.historyMgr.markClean(); }
 
-  undo(): boolean {
-    if (this.historyIndex <= 0) return false;
-    this.historyIndex--;
-    this.restoreHistory(this.history[this.historyIndex]);
-    return true;
-  }
+  undo(): boolean { return this.historyMgr.undo(); }
 
-  redo(): boolean {
-    if (this.historyIndex >= this.history.length - 1) return false;
-    this.historyIndex++;
-    this.restoreHistory(this.history[this.historyIndex]);
-    return true;
-  }
+  redo(): boolean { return this.historyMgr.redo(); }
 
-  get canUndo(): boolean { return this.historyIndex > 0; }
-  get canRedo(): boolean { return this.historyIndex < this.history.length - 1; }
+  get canUndo(): boolean { return this.historyMgr.canUndo; }
+  get canRedo(): boolean { return this.historyMgr.canRedo; }
 
   private restoreHistory(entry: HistoryEntry): void {
     // History holds already-sanitized markup, but re-sanitize so the invariant
@@ -1579,356 +1487,59 @@ export class AppState {
     return this.defsElement;
   }
 
-  private nextSymbolId(): string {
-    return `symbol-${++this.symbolCounter}`;
-  }
+  // ---- Symbols ---- (create-from-shape / place / detach / remove live in
+  // core/symbol-registry.ts; AppState delegates and supplies the host adapter.)
 
   createSymbolFromShape(shapeId: string): SymbolDef | null {
-    const idx = this.shapes.findIndex(s => s.id === shapeId);
-    if (idx === -1) return null;
-    const shape = this.shapes[idx];
-
-    const defs = this.ensureDefs();
-    const symbolEl = document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
-    const symId = this.nextSymbolId();
-    symbolEl.id = symId;
-
-    // Get bounding box for viewBox
-    const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
-    symbolEl.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
-
-
-    const clone = shape.element.cloneNode(true) as SVGElement;
-    clone.removeAttribute('id');
-    symbolEl.appendChild(clone);
-    defs.appendChild(symbolEl);
-
-    const symName = shape.name || `Symbol ${symId}`;
-    const symbolDef: SymbolDef = { id: symId, name: symName, element: symbolEl as unknown as SVGSymbolElement };
-    this.symbols.push(symbolDef);
-
-
-    const useEl = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    const useId = this.nextId();
-    useEl.id = useId;
-    useEl.setAttribute('href', `#${symId}`);
-    useEl.setAttribute('x', String(bbox.x));
-    useEl.setAttribute('y', String(bbox.y));
-    useEl.setAttribute('width', String(bbox.width));
-    useEl.setAttribute('height', String(bbox.height));
-    useEl.setAttribute('data-name', `${symName} instance`);
-
-    // Replace in DOM
-    shape.element.replaceWith(useEl);
-
-    // Replace in shapes array
-    this.shapes[idx] = {
-      id: useId,
-      type: 'use',
-      element: useEl,
-      name: `${symName} instance`,
-      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: parseFloat(shape.element.getAttribute('opacity') ?? '1') },
-      visible: true,
-      locked: false,
-      symbolId: symId,
-    };
-
-    this.selectedShapeIds = [useId];
-    this.saveHistory();
-    this.onChangeCallback();
-    return symbolDef;
+    return this.symbolRegistry.createSymbolFromShape(shapeId);
   }
 
   placeSymbolInstance(symId: string): void {
-    const sym = this.symbols.find(s => s.id === symId);
-    if (!sym) return;
-
-    const viewBox = sym.element.getAttribute('viewBox')?.split(' ').map(Number) ?? [0, 0, 100, 100];
-    const ab = this.getActiveArtboard();
-    const w = viewBox[2];
-    const h = viewBox[3];
-    const x = ab.x + (ab.width - w) / 2;
-    const y = ab.y + (ab.height - h) / 2;
-
-    const useEl = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    const id = this.nextId();
-    useEl.id = id;
-    useEl.setAttribute('href', `#${symId}`);
-    useEl.setAttribute('x', String(x));
-    useEl.setAttribute('y', String(y));
-    useEl.setAttribute('width', String(w));
-    useEl.setAttribute('height', String(h));
-    const name = `${sym.name} instance`;
-    useEl.setAttribute('data-name', name);
-
-    this.addShape({
-      id, type: 'use', element: useEl, name,
-      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
-      visible: true, locked: false,
-      symbolId: symId,
-    });
+    this.symbolRegistry.placeSymbolInstance(symId);
   }
 
   detachSymbolInstance(shapeId: string): void {
-    const idx = this.shapes.findIndex(s => s.id === shapeId);
-    if (idx === -1) return;
-    const shape = this.shapes[idx];
-    if (shape.type !== 'use' || !shape.symbolId) return;
-
-    const sym = this.symbols.find(s => s.id === shape.symbolId);
-    if (!sym) return;
-
-    // Get position/size of the use element
-    const useEl = shape.element;
-    const x = parseFloat(useEl.getAttribute('x') ?? '0');
-    const y = parseFloat(useEl.getAttribute('y') ?? '0');
-    const w = parseFloat(useEl.getAttribute('width') ?? '100');
-    const h = parseFloat(useEl.getAttribute('height') ?? '100');
-
-    // Clone the symbol content
-    const symbolContent = sym.element.firstElementChild;
-    if (!symbolContent) return;
-
-    const clone = document.importNode(symbolContent, true) as SVGElement;
-    const newId = this.nextId();
-    clone.id = newId;
-    const type = this.detectType(clone);
-    if (!type) return;
-
-    // Position the clone to match the use element placement
-    const viewBox = sym.element.getAttribute('viewBox')?.split(' ').map(Number) ?? [0, 0, w, h];
-    const scaleX = w / viewBox[2];
-    const scaleY = h / viewBox[3];
-    if (scaleX !== 1 || scaleY !== 1 || x !== viewBox[0] || y !== viewBox[1]) {
-      const tx = x - viewBox[0] * scaleX;
-      const ty = y - viewBox[1] * scaleY;
-      clone.setAttribute('transform', `translate(${tx}, ${ty}) scale(${scaleX}, ${scaleY})`);
-    }
-
-    const name = `${type} ${newId.replace('shape-', '#')}`;
-    clone.setAttribute('data-name', name);
-
-    // Replace in DOM
-    useEl.replaceWith(clone);
-
-    // Replace in shapes array
-    this.shapes[idx] = {
-      id: newId, type, element: clone, name,
-      style: this.readStyle(clone, type),
-      visible: true, locked: false,
-    };
-
-    this.selectedShapeIds = [newId];
-    this.saveHistory();
-    this.onChangeCallback();
+    this.symbolRegistry.detachSymbolInstance(shapeId);
   }
 
-  /** Remove a symbol definition (existing instances will no longer resolve). */
   removeSymbol(id: string): void {
-    const idx = this.symbols.findIndex(s => s.id === id);
-    if (idx === -1) return;
-    this.symbols[idx].element.remove();
-    this.symbols.splice(idx, 1);
-    if (this.selectedSymbolId === id) this.selectedSymbolId = null;
-    this.onChangeCallback();
+    this.symbolRegistry.removeSymbol(id);
   }
 
   // ---- Gradient management ----
 
   createGradient(type: 'linear' | 'radial', stops?: GradientStop[]): GradientDef {
-    const id = `grad-${++this.gradCounter}`;
-    const defaultStops: GradientStop[] = stops ?? [
-      { offset: 0, color: '#000000', opacity: 1 },
-      { offset: 1, color: '#FFFFFF', opacity: 1 },
-    ];
-    const grad: GradientDef = {
-      id, type, stops: defaultStops,
-      spreadMethod: 'pad',
-      ...(type === 'linear'
-        ? { x1: 0, y1: 0, x2: 1, y2: 0 }
-        : { cx: 0.5, cy: 0.5, r: 0.5, fx: 0.5, fy: 0.5 }),
-    };
-    this.gradients.push(grad);
-    this.syncGradientToDefs(grad);
-    return grad;
+    return this.paint.createGradient(type, stops);
   }
 
   updateGradient(grad: GradientDef): void {
-    const idx = this.gradients.findIndex(g => g.id === grad.id);
-    if (idx >= 0) this.gradients[idx] = grad;
-    this.syncGradientToDefs(grad);
-    this.onChangeCallback();
+    this.paint.updateGradient(grad);
   }
 
   removeGradient(id: string): void {
-    this.gradients = this.gradients.filter(g => g.id !== id);
-    const defs = this.ensureDefs();
-    const el = defs.querySelector(`#${id}`);
-    if (el) el.remove();
+    this.paint.removeGradient(id);
   }
 
   getGradientById(id: string): GradientDef | undefined {
-    return this.gradients.find(g => g.id === id);
-  }
-
-  private syncGradientToDefs(grad: GradientDef): void {
-    const defs = this.ensureDefs();
-    const NS = 'http://www.w3.org/2000/svg';
-
-    // Remove existing
-    const existing = defs.querySelector(`#${grad.id}`);
-    if (existing) existing.remove();
-
-    const el = document.createElementNS(NS,
-      grad.type === 'linear' ? 'linearGradient' : 'radialGradient');
-    el.id = grad.id;
-
-    if (grad.type === 'linear') {
-      el.setAttribute('x1', String(grad.x1 ?? 0));
-      el.setAttribute('y1', String(grad.y1 ?? 0));
-      el.setAttribute('x2', String(grad.x2 ?? 1));
-      el.setAttribute('y2', String(grad.y2 ?? 0));
-    } else {
-      el.setAttribute('cx', String(grad.cx ?? 0.5));
-      el.setAttribute('cy', String(grad.cy ?? 0.5));
-      el.setAttribute('r', String(grad.r ?? 0.5));
-      el.setAttribute('fx', String(grad.fx ?? 0.5));
-      el.setAttribute('fy', String(grad.fy ?? 0.5));
-    }
-    el.setAttribute('spreadMethod', grad.spreadMethod ?? 'pad');
-
-    for (const stop of grad.stops) {
-      const s = document.createElementNS(NS, 'stop');
-      s.setAttribute('offset', String(stop.offset));
-      s.setAttribute('stop-color', stop.color);
-      if (stop.opacity < 1) s.setAttribute('stop-opacity', String(stop.opacity));
-      el.appendChild(s);
-    }
-
-    defs.appendChild(el);
+    return this.paint.getGradientById(id);
   }
 
   // ---- Pattern management ----
 
   createPattern(def: Partial<PatternDef> & { type: PatternDef['type'] }): PatternDef {
-    const id = `pat-${++this.patternCounter}`;
-    const pat: PatternDef = {
-      id, type: def.type,
-      preset: def.preset,
-      presetColor: def.presetColor ?? '#000000',
-      imageDataUrl: def.imageDataUrl,
-      scale: def.scale ?? 1,
-      rotation: def.rotation ?? 0,
-      spacing: def.spacing ?? 0,
-      tileWidth: def.tileWidth ?? 20,
-      tileHeight: def.tileHeight ?? 20,
-    };
-    this.patterns.push(pat);
-    this.syncPatternToDefs(pat);
-    return pat;
+    return this.paint.createPattern(def);
   }
 
   updatePattern(pat: PatternDef): void {
-    const idx = this.patterns.findIndex(p => p.id === pat.id);
-    if (idx >= 0) this.patterns[idx] = pat;
-    this.syncPatternToDefs(pat);
-    this.onChangeCallback();
+    this.paint.updatePattern(pat);
   }
 
   removePattern(id: string): void {
-    this.patterns = this.patterns.filter(p => p.id !== id);
-    const defs = this.ensureDefs();
-    const el = defs.querySelector(`#${id}`);
-    if (el) el.remove();
+    this.paint.removePattern(id);
   }
 
   getPatternById(id: string): PatternDef | undefined {
-    return this.patterns.find(p => p.id === id);
-  }
-
-  private syncPatternToDefs(pat: PatternDef): void {
-    const defs = this.ensureDefs();
-    const NS = 'http://www.w3.org/2000/svg';
-
-    const existing = defs.querySelector(`#${pat.id}`);
-    if (existing) existing.remove();
-
-    const tw = pat.tileWidth * pat.scale + pat.spacing;
-    const th = pat.tileHeight * pat.scale + pat.spacing;
-
-    const el = document.createElementNS(NS, 'pattern');
-    el.id = pat.id;
-    el.setAttribute('width', String(tw));
-    el.setAttribute('height', String(th));
-    el.setAttribute('patternUnits', 'userSpaceOnUse');
-
-    if (pat.rotation !== 0) {
-      el.setAttribute('patternTransform', `rotate(${pat.rotation})`);
-    }
-
-    if (pat.type === 'image' && pat.imageDataUrl) {
-      const img = document.createElementNS(NS, 'image');
-      img.setAttribute('href', pat.imageDataUrl);
-      img.setAttribute('width', String(pat.tileWidth * pat.scale));
-      img.setAttribute('height', String(pat.tileHeight * pat.scale));
-      img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-      el.appendChild(img);
-    } else if (pat.type === 'preset') {
-      this.buildPresetPatternContent(el, pat);
-    }
-
-    defs.appendChild(el);
-  }
-
-  private buildPresetPatternContent(el: SVGPatternElement, pat: PatternDef): void {
-    const tw = pat.tileWidth * pat.scale + pat.spacing;
-    const th = pat.tileHeight * pat.scale + pat.spacing;
-    const NS = 'http://www.w3.org/2000/svg';
-    const color = pat.presetColor ?? '#000000';
-    const s = pat.scale;
-
-    switch (pat.preset) {
-      case 'dots': {
-        const dot = document.createElementNS(NS, 'circle');
-        dot.setAttribute('cx', String(tw / 2));
-        dot.setAttribute('cy', String(th / 2));
-        dot.setAttribute('r', String(2 * s));
-        dot.setAttribute('fill', color);
-        el.appendChild(dot);
-        break;
-      }
-      case 'stripes': {
-        const line = document.createElementNS(NS, 'line');
-        line.setAttribute('x1', '0'); line.setAttribute('y1', '0');
-        line.setAttribute('x2', '0'); line.setAttribute('y2', String(th));
-        line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', String(Math.max(1, 2 * s)));
-        el.appendChild(line);
-        break;
-      }
-      case 'crosshatch': {
-        const l1 = document.createElementNS(NS, 'line');
-        l1.setAttribute('x1', '0'); l1.setAttribute('y1', '0');
-        l1.setAttribute('x2', String(tw)); l1.setAttribute('y2', String(th));
-        l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', String(Math.max(0.5, s)));
-        el.appendChild(l1);
-        const l2 = document.createElementNS(NS, 'line');
-        l2.setAttribute('x1', String(tw)); l2.setAttribute('y1', '0');
-        l2.setAttribute('x2', '0'); l2.setAttribute('y2', String(th));
-        l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', String(Math.max(0.5, s)));
-        el.appendChild(l2);
-        break;
-      }
-      case 'grid': {
-        const path = document.createElementNS(NS, 'path');
-        path.setAttribute('d', `M ${tw} 0 L 0 0 0 ${th}`);
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', color);
-        path.setAttribute('stroke-width', String(Math.max(0.5, s)));
-        el.appendChild(path);
-        break;
-      }
-    }
+    return this.paint.getPatternById(id);
   }
 
   // ---- Defs export ----
@@ -2019,12 +1630,8 @@ export class AppState {
 
   /** Clear all symbols/gradients/patterns and empty the live <defs>. */
   clearDefs(): void {
-    this.symbols = [];
-    this.gradients = [];
-    this.patterns = [];
-    this.symbolCounter = 0;
-    this.gradCounter = 0;
-    this.patternCounter = 0;
+    this.symbolRegistry.clear(); // symbol models + counter
+    this.paint.clear(); // gradients/patterns models + counters
     this.importedNamespaces.clear();
     // Remove imported/user defs but keep the editor's grid & transparency
     // patterns, which live in this same <defs> and back the canvas chrome.
@@ -2066,74 +1673,16 @@ export class AppState {
         sanitizeSvgElement(imported);
         this.ensureDefs().appendChild(imported);
         // Track symbols so they appear in the Symbols panel and round-trip.
-        if (tag === 'symbol') {
-          const id = imported.id || `symbol-${++this.symbolCounter}`;
-          imported.id = id;
-          const m = id.match(/symbol-(\d+)/);
-          if (m) this.symbolCounter = Math.max(this.symbolCounter, parseInt(m[1]));
-          this.symbols.push({
-            id,
-            name: imported.getAttribute('data-name') || `Symbol ${id}`,
-            element: imported as unknown as SVGSymbolElement,
-          });
-        }
+        if (tag === 'symbol') this.symbolRegistry.trackImportedSymbol(imported);
         continue;
       }
 
       if (tag === 'lineargradient' || tag === 'radialgradient') {
-        const type = tag === 'lineargradient' ? 'linear' as const : 'radial' as const;
-        const id = child.id || `grad-${++this.gradCounter}`;
-        const stops: GradientStop[] = [];
-        for (const stopEl of Array.from(child.querySelectorAll('stop'))) {
-          stops.push({
-            offset: parseFloat(stopEl.getAttribute('offset') ?? '0'),
-            color: stopEl.getAttribute('stop-color') ?? '#000000',
-            opacity: parseFloat(stopEl.getAttribute('stop-opacity') ?? '1'),
-          });
-        }
-        const grad: GradientDef = {
-          id, type, stops,
-          spreadMethod: (child.getAttribute('spreadMethod') as GradientDef['spreadMethod']) ?? 'pad',
-          x1: parseFloat(child.getAttribute('x1') ?? '0'),
-          y1: parseFloat(child.getAttribute('y1') ?? '0'),
-          x2: parseFloat(child.getAttribute('x2') ?? '1'),
-          y2: parseFloat(child.getAttribute('y2') ?? '0'),
-          cx: parseFloat(child.getAttribute('cx') ?? '0.5'),
-          cy: parseFloat(child.getAttribute('cy') ?? '0.5'),
-          r: parseFloat(child.getAttribute('r') ?? '0.5'),
-          fx: parseFloat(child.getAttribute('fx') ?? '0.5'),
-          fy: parseFloat(child.getAttribute('fy') ?? '0.5'),
-        };
-        this.gradients.push(grad);
-
-        // Ensure counter stays ahead
-        const m = id.match(/grad-(\d+)/);
-        if (m) this.gradCounter = Math.max(this.gradCounter, parseInt(m[1]));
-
-        // Copy element into our defs
-        const imported = document.importNode(child, true) as SVGElement;
-        sanitizeSvgElement(imported);
-        this.ensureDefs().appendChild(imported);
+        this.paint.importGradientElement(child);
       }
 
       if (tag === 'pattern') {
-        const id = child.id || `pat-${++this.patternCounter}`;
-        const m = id.match(/pat-(\d+)/);
-        if (m) this.patternCounter = Math.max(this.patternCounter, parseInt(m[1]));
-
-        // Copy element into our defs (sanitized: patterns can embed <image href>)
-        const imported = document.importNode(child, true) as SVGElement;
-        sanitizeSvgElement(imported);
-        this.ensureDefs().appendChild(imported);
-
-        // Create a minimal PatternDef for tracking
-        this.patterns.push({
-          id, type: 'preset', preset: 'grid',
-          presetColor: '#000000',
-          scale: 1, rotation: 0, spacing: 0,
-          tileWidth: parseFloat(child.getAttribute('width') ?? '20'),
-          tileHeight: parseFloat(child.getAttribute('height') ?? '20'),
-        });
+        this.paint.importPatternElement(child);
       }
     }
   }
@@ -2154,6 +1703,10 @@ export class AppState {
     const doc = new DOMParser().parseFromString(ensureSvgNamespaces(svgString), 'image/svg+xml');
     const svgEl = doc.querySelector('svg');
     if (!svgEl) return;
+    // Detect SMIL animation before the sanitizer strips it, so the UI can warn.
+    this.lastImportHadAnimation = !!svgEl.querySelector(
+      'animate, animateTransform, animateMotion, animateColor, set',
+    );
     this.drawingLayer.innerHTML = '';
     this.shapes = [];
 
@@ -2164,17 +1717,22 @@ export class AppState {
 
     // 2. Faithfully clone each rendering child, ids and references intact.
     //    Non-rendering containers/metadata are skipped (defs is handled above).
+    //    The clones are sanitized inside a DETACHED staging group before any of
+    //    them touch the live document — stripping event handlers, unsafe hrefs,
+    //    and whole blocked elements (incl. a top-level <script>/<foreignObject>,
+    //    which sanitizing a node in isolation can't remove from itself). This
+    //    keeps the invariant "nothing unsanitized enters the live DOM" without
+    //    relying on event-loop timing (matches the paste paths).
     const NON_RENDERING = new Set(['defs', 'metadata', 'title', 'desc', 'namedview']);
+    const staging = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     for (const child of Array.from(svgEl.children)) {
       if (NON_RENDERING.has(child.localName.toLowerCase())) continue;
-      this.drawingLayer.appendChild(document.importNode(child, true));
+      staging.appendChild(document.importNode(child, true));
     }
+    sanitizeSvgElement(staging); // off-document; drops blocked roots too
+    while (staging.firstChild) this.drawingLayer.appendChild(staging.firstChild);
 
-    // 3. Security-sanitize the imported subtree in place (strips event handlers
-    //    and unsafe hrefs without disturbing geometry or internal references).
-    sanitizeSvgElement(this.drawingLayer);
-
-    // 4. Strip Inkscape's degenerate subpaths (anchors collapsed to a point with
+    // 3. Strip Inkscape's degenerate subpaths (anchors collapsed to a point with
     //    control points flung to the origin) — invisible when filled but a stray
     //    line when stroked. This is the one intentional deviation from raw input.
     for (const pathEl of Array.from(this.drawingLayer.querySelectorAll('path'))) {
@@ -2184,7 +1742,7 @@ export class AppState {
       if (removed > 0) pathEl.setAttribute('d', clean);
     }
 
-    // 5. Build the editor model from whatever was imported.
+    // 4. Build the editor model from whatever was imported.
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = [];
     this.saveHistory();
