@@ -1,13 +1,14 @@
 {
   "name": "svgmaker",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "corpus:fetch": "node scripts/fetch-corpus.mjs",
+    "fixtures:gen": "node scripts/gen-fixtures.mjs",
     "test": "playwright test",
     "test:ui": "playwright test --ui"
   },

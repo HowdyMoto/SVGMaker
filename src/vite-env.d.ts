@@ -3,6 +3,10 @@
 /** Package version, injected at build time via Vite `define` (see vite.config.ts). */
 declare const __APP_VERSION__: string;
 
+/** Build identity (short commit SHA + ISO date), injected by vite.config.ts. */
+declare const __BUILD_SHA__: string;
+declare const __BUILD_DATE__: string;
+
 /**
  * Supabase config, supplied at build time via Vite env vars (see .env.example).
  * Both are optional: when absent the app runs exactly as before with all

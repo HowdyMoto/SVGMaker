@@ -26,7 +26,7 @@ export function showAboutDialog(): void {
     <button class="about-close" aria-label="Close">✕</button>
     <img class="about-logo" src="${iconSrc}" alt="" width="72" height="72" />
     <h1 class="about-title">SVGMaker</h1>
-    <div class="about-version">Version ${__APP_VERSION__}</div>
+    <div class="about-version">Version ${__APP_VERSION__} · ${__BUILD_DATE__} · ${__BUILD_SHA__}</div>
     <p class="about-tagline">A browser-based SVG editor.</p>
     <div class="about-copyright">© 2026 · All rights reserved. WrightGeist LLC</div>
   `;
