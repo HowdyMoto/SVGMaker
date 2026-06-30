@@ -26,9 +26,11 @@ export class NodeEditTool extends BaseTool {
   private marqueeRect: SVGRectElement | null = null;
 
   activate(): void {
-    // If a single path is already selected, jump straight into editing it.
+    // If an editable shape is already selected, jump straight into editing it.
+    // enterPathEdit converts a primitive (rect/ellipse/polygon/star/line) to a
+    // path; it no-ops (returns false) for shapes that can't be node-edited.
     const sel = this.state.getSelectedShape();
-    if (sel && sel.type === 'path') this.state.enterPathEdit(sel.id);
+    if (sel) this.state.enterPathEdit(sel.id);
   }
 
   deactivate(): void {
@@ -44,12 +46,12 @@ export class NodeEditTool extends BaseTool {
 
     const editingEl = this.editingElement();
 
-    // Not editing yet: clicking a path enters edit; otherwise plain-select.
+    // Not editing yet: clicking a shape enters node editing (converting a
+    // primitive to a path); non-editable shapes (group/text/image) plain-select.
     if (!editingEl || !this.state.pathEdit) {
       const el = this.findShapeElement(e.target as SVGElement);
       const shape = el ? this.state.findShapeById(el.id) : null;
-      if (shape && shape.type === 'path') this.state.enterPathEdit(shape.id);
-      else this.state.selectShape(el?.id ?? null);
+      if (!shape || !this.state.enterPathEdit(shape.id)) this.state.selectShape(el?.id ?? null);
       return;
     }
 
@@ -78,13 +80,12 @@ export class NodeEditTool extends BaseTool {
       return;
     }
 
-    // 3) Clicked a DIFFERENT shape: switch to editing/selecting it.
+    // 3) Clicked a DIFFERENT shape: switch to editing it (converting a primitive),
+    // or plain-select it if it can't be node-edited.
     const el = this.findShapeElement(e.target as SVGElement);
     if (el && el.id !== this.state.editingPathId) {
       const shape = this.state.findShapeById(el.id);
-      if (shape && shape.type === 'path') {
-        this.state.enterPathEdit(shape.id);
-      } else if (shape) {
+      if (shape && !this.state.enterPathEdit(shape.id)) {
         this.state.exitPathEdit();
         this.state.selectShape(shape.id);
       }

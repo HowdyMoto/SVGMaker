@@ -389,16 +389,21 @@ export class AppState {
   enterPathEdit(id: string): boolean {
     const shape = this.findShapeById(id);
     if (!shape || shape.locked) return false;
-    // A primitive boolean operand (rect/ellipse/…) has no anchors to edit; convert
-    // it to an equivalent <path> in place the first time the user node-edits it.
+    // Node editing operates on a <path>. A primitive (rect, ellipse, polygon/star,
+    // line, polyline) is converted to an equivalent path in place so its defining
+    // points become directly editable — matching Illustrator/Inkscape's node tools.
+    let converted = false;
     if (shape.type !== 'path') {
-      if (!this.isBooleanOperand(shape) || !this.convertOperandToPath(shape)) return false;
+      if (!this.convertShapeToPath(shape)) return false;
+      converted = true;
     }
     const d = shape.element.getAttribute('d');
     if (!d) return false;
     this.editingPathId = id;
     this.pathEdit = new PathEditSession(d);
     this.selectedShapeIds = [id];
+    // The in-place conversion changed the document, so make it an undoable step.
+    if (converted) this.saveHistory();
     this.onChangeCallback();
     return true;
   }
@@ -1476,18 +1481,16 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  /** True if `shape` is a direct operand of a live boolean wrapper. */
-  private isBooleanOperand(shape: ShapeData): boolean {
-    return shape.element.hasAttribute('data-bool-operand') &&
-      this.findShapeById(shape.parentId ?? '')?.type === 'boolean';
-  }
-
   /**
-   * Replace a primitive operand element with an equivalent `<path>` in place,
-   * preserving id, paint, transform, and operand tagging, then re-sync the model
-   * so node editing can proceed. Geometry is exact (its local d, transform kept).
+   * Replace a primitive element (rect, ellipse, polygon/star, line, polyline) with
+   * an equivalent `<path>` in place, preserving id, paint, transform, name and any
+   * operand tagging — everything but the primitive's geometry attributes. Geometry
+   * is exact (its local d). Returns false for types with no single-path equivalent
+   * (path itself, group, text, image, use, boolean), which can't be node-edited.
    */
-  private convertOperandToPath(shape: ShapeData): boolean {
+  private convertShapeToPath(shape: ShapeData): boolean {
+    const CONVERTIBLE: ReadonlyArray<ShapeData['type']> = ['rect', 'ellipse', 'line', 'polyline', 'polygon'];
+    if (!CONVERTIBLE.includes(shape.type)) return false;
     const el = shape.element;
     const d = localPathData(el);
     if (!d.trim()) return false;
