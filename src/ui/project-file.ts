@@ -12,6 +12,7 @@ import {
 } from '../core/file-access';
 import { rememberRecentFile } from './recent-files';
 import { withLoadingOverlay } from './loading-overlay';
+import { showToast } from './toast';
 import { SVG_NS_DECLS, ensureSvgNamespaces } from '../core/svg-ns';
 
 const FORMAT_VERSION = 1;
@@ -194,11 +195,17 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
     state.clearDefs();
     state.importSVGContent(svgString);
 
-    const vb = svgEl.getAttribute('viewBox')?.split(/[\s,]+/).map(Number);
-    const w = parseFloat(svgEl.getAttribute('width') ?? '') || vb?.[2] || 960;
-    const h = parseFloat(svgEl.getAttribute('height') ?? '') || vb?.[3] || 540;
-    const x = vb?.[0] || 0;
-    const y = vb?.[1] || 0;
+    // The imported content lives in the viewBox coordinate system, so the
+    // artboard must match the viewBox — not width/height, which are the display
+    // size and may be in physical units (mm/cm/in) or % that parseFloat would
+    // misread as user units, leaving the art far larger/smaller than the board.
+    const vb = svgEl.getAttribute('viewBox')?.split(/[\s,]+/).map(Number)
+      .filter(n => Number.isFinite(n));
+    const hasVb = vb?.length === 4 && vb[2] > 0 && vb[3] > 0;
+    const w = (hasVb ? vb![2] : parseFloat(svgEl.getAttribute('width') ?? '')) || 960;
+    const h = (hasVb ? vb![3] : parseFloat(svgEl.getAttribute('height') ?? '')) || 540;
+    const x = hasVb ? vb![0] : 0;
+    const y = hasVb ? vb![1] : 0;
     state.artboards.length = 0;
     state.artboards.push({ id: state.nextArtboardId(), x, y, width: w, height: h, name: 'Artboard 1' });
     state.activeArtboardId = state.artboards[0].id;
@@ -208,6 +215,10 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
   state.saveHistory();
   state.markClean();
   state.onChange_public();
+
+  if (!meta && state.lastImportHadAnimation) {
+    showToast('This SVG used SMIL animation, which BuzzQuill doesn’t support yet. The static image was imported — saving won’t include the animation.');
+  }
 }
 
 /** Dispatch on file contents: legacy .svgmaker JSON vs. SVG. */

@@ -61,6 +61,10 @@ behaviour) across three tiers:
 - **File decode** ([`test/file-decode.spec.ts`](test/file-decode.spec.ts)) — the
   byte→text step: gzipped `.svgz`, and non-UTF-8 encodings (declared ISO-8859-1,
   UTF-16 BOM).
+- **Smoke** ([`test/smoke.spec.ts`](test/smoke.spec.ts)) — the entire **W3C SVG
+  1.1 conformance suite** (~525 files, fetched via `npm run smoke:fetch`), with
+  lenient assertions (imports without crashing + round-trips to valid XML) for
+  broad "any SVG" coverage.
 
 ```bash
 npm run corpus:fetch   # download the large corpus from Wikimedia Commons (~313 MB)

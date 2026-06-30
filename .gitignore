@@ -30,6 +30,10 @@ dist-ssr
 # script are committed; the heavy .svg files are not.
 /test/corpus/svg/
 
+# Broad SVG smoke tier (W3C SVG 1.1 suite): fetched via `npm run smoke:fetch`.
+/test/smoke/svg/
+/test/smoke/.cache/
+
 # Playwright
 /test-results/
 /playwright-report/

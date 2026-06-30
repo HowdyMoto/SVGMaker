@@ -3,6 +3,7 @@ import { saveFilePicker, writeHandle, downloadFile, readSvgFile } from '../core/
 import { SVG_NS_DECLS } from '../core/svg-ns';
 import { bakeLayerContent } from '../core/bake';
 import { withLoadingOverlay } from './loading-overlay';
+import { showToast } from './toast';
 
 const SVG_PICKER_TYPES = [
   { description: 'SVG Image', accept: { 'image/svg+xml': ['.svg'] } },
@@ -58,6 +59,9 @@ export function importSVG(state: AppState): void {
       state.importSVGContent(text);
     } else {
       await withLoadingOverlay(`Importing ${file.name}…`, () => state.importSVGContent(text));
+    }
+    if (state.lastImportHadAnimation) {
+      showToast('This SVG used SMIL animation, which BuzzQuill doesn’t support yet. The static image was imported — saving won’t include the animation.');
     }
   };
 }
