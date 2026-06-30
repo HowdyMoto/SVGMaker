@@ -4,6 +4,21 @@ import type { CommandContext } from '../commands';
 import { runCommand } from '../commands';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
 
+// Minimalist, monochrome toggle glyphs — flat line icons on a 24-unit grid (the
+// proportions used by well-tuned icon sets) that inherit the row's `currentColor`
+// (dim grey, brighter on hover, white when selected) instead of colourful emoji.
+// Locked is a FILLED padlock and unlocked an OUTLINE one, so the fill signals state.
+const SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+const EYE_LENS = 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z';
+const ICON_EYE =
+  `${SVG}<path d="${EYE_LENS}"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>`;
+const ICON_EYE_OFF =
+  `${SVG}<path d="${EYE_LENS}"/><path d="M4.5 19.5 19.5 4.5"/></svg>`;
+const ICON_LOCK =
+  `${SVG}<path d="M8 11V7.5a4 4 0 0 1 8 0V11"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M6.5 10.5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Zm5.5 3.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>`;
+const ICON_UNLOCK =
+  `${SVG}<path d="M8 11V7.5a4 4 0 0 1 7-2"/><rect x="4.5" y="10.5" width="15" height="10" rx="2"/></svg>`;
+
 // Id of the row currently being dragged in the Layers panel (null when idle).
 let draggedId: string | null = null;
 
@@ -99,7 +114,32 @@ export function updateLayersPanel(state: AppState): void {
       li.setAttribute('data-id', shape.id);
       li.setAttribute('data-depth', String(depth));
 
-      // Indent spacer — one per depth level
+      // Visibility + lock toggles render FIRST, forming a fixed left column so
+      // they (and any future per-layer toggles) line up across every row. The
+      // disclosure arrow and tree indent sit to their right and never shift them.
+      const vis = document.createElement('span');
+      vis.className = 'layer-vis';
+      vis.innerHTML = shape.visible ? ICON_EYE : ICON_EYE_OFF;
+      vis.title = shape.visible ? 'Hide' : 'Show';
+      vis.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.toggleVisibility(shape.id);
+      });
+
+      // Lock toggle — show a faded open padlock when unlocked so it's clickable.
+      const lock = document.createElement('span');
+      lock.className = shape.locked ? 'layer-lock' : 'layer-lock unlocked';
+      lock.innerHTML = shape.locked ? ICON_LOCK : ICON_UNLOCK;
+      lock.title = shape.locked ? 'Unlock' : 'Lock';
+      lock.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.toggleLock(shape.id);
+      });
+
+      li.appendChild(vis);
+      li.appendChild(lock);
+
+      // Indent spacer — one per depth level (indents the disclosure/name, not the toggles)
       if (depth > 0) {
         const indent = document.createElement('span');
         indent.className = 'layer-indent';
@@ -134,26 +174,6 @@ export function updateLayersPanel(state: AppState): void {
         li.appendChild(connector);
       }
 
-      // Visibility toggle
-      const vis = document.createElement('span');
-      vis.className = 'layer-vis';
-      vis.innerHTML = shape.visible ? '&#x1F441;' : '&#x2014;';
-      vis.title = shape.visible ? 'Hide' : 'Show';
-      vis.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.toggleVisibility(shape.id);
-      });
-
-      // Lock toggle — show a faded open padlock when unlocked so it's clickable.
-      const lock = document.createElement('span');
-      lock.className = shape.locked ? 'layer-lock' : 'layer-lock unlocked';
-      lock.innerHTML = shape.locked ? '&#x1F512;' : '&#x1F513;';
-      lock.title = shape.locked ? 'Unlock' : 'Lock';
-      lock.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.toggleLock(shape.id);
-      });
-
       // Icon
       const icon = document.createElement('span');
       icon.className = 'layer-icon';
@@ -164,8 +184,6 @@ export function updateLayersPanel(state: AppState): void {
       name.className = 'layer-name';
       name.textContent = shape.name;
 
-      li.appendChild(vis);
-      li.appendChild(lock);
       li.appendChild(icon);
       li.appendChild(name);
 

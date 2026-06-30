@@ -307,6 +307,12 @@
           <g id="guides-layer"></g>
           <g id="selection-layer"></g>
         </svg>
+        <!-- Live modifier-key / shortcut hints shown during a draw or transform gesture. -->
+        <div id="gesture-hud" class="gesture-hud" hidden></div>
+        <!-- Contextual hint shown while editing groups; content set by ui/group-hint.ts. -->
+        <div id="group-hint" class="group-hint" hidden></div>
+        <!-- Contextual hint for the Direct Selection (node-editing) tool; set by ui/node-hint.ts. -->
+        <div id="node-hint" class="group-hint" hidden></div>
       </main>
 
       <!-- Right Panels -->
@@ -314,7 +320,7 @@
         <!-- Properties / Transform -->
         <div class="panel" id="panel-properties">
           <div class="panel-header" data-panel="properties">
-            <span>Properties</span>
+            <span>Transform</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
           <div class="panel-body">

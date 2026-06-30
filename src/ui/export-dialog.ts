@@ -16,7 +16,7 @@ function layerContent(state: AppState, bake: boolean): string {
 
 /** Export a single artboard straight to an .svg file (used by the panel's per-row button). */
 export async function exportArtboardToFile(state: AppState, ab: Artboard): Promise<void> {
-  const svgStr = buildArtboardSVG(ab, layerContent(state, state.bakeTransformsOnExport), state.getDefsBlock());
+  const svgStr = buildArtboardSVG(ab, layerContent(state, state.bakeTransformsOnExport), state.getDefsBlock(), state.getExtraNamespaceDecls());
   const filename = `${sanitizeFilename(ab.name)}.svg`;
   if (supportsFileSystemAccess()) {
     try {
@@ -249,10 +249,10 @@ async function exportArtboards(
     const fileName = sanitizeFilename(ab.name);
 
     if (format === 'svg') {
-      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock);
+      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock, state.getExtraNamespaceDecls());
       downloadBlob(new Blob([svgStr], { type: 'image/svg+xml' }), `${fileName}.svg`);
     } else {
-      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock);
+      const svgStr = buildArtboardSVG(ab, drawingSvg, defsBlock, state.getExtraNamespaceDecls());
       const blob = await rasterize(svgStr, ab.width, ab.height, scale, format);
       downloadBlob(blob, `${fileName}.${format}`);
     }
@@ -268,10 +268,10 @@ async function exportArtboards(
   }
 }
 
-function buildArtboardSVG(ab: Artboard, drawingSvg: string, defsBlock: string): string {
+function buildArtboardSVG(ab: Artboard, drawingSvg: string, defsBlock: string, extraNs = ''): string {
   // Clip drawing content to the artboard bounds via a viewBox
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}
+<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}${extraNs}
      viewBox="${ab.x} ${ab.y} ${ab.width} ${ab.height}"
      width="${ab.width}" height="${ab.height}">
   ${defsBlock}<rect x="${ab.x}" y="${ab.y}" width="${ab.width}" height="${ab.height}" fill="white"/>

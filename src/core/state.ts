@@ -107,6 +107,15 @@ export class AppState {
   patterns: PatternDef[] = [];
   private patternCounter = 0;
 
+  /**
+   * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
+   * `i`/`x`/`graph`, custom `bx`, …) beyond the ones we always emit
+   * (xlink/inkscape/sodipodi). Prefixed attributes/elements survive import in
+   * the live DOM, so on save we must re-declare their namespaces or the file is
+   * invalid XML and won't reload. Captured on import, re-emitted on serialize.
+   */
+  private importedNamespaces = new Map<string, string>();
+
   constructor(drawingLayer: SVGGElement, onChange: () => void) {
     this.drawingLayer = drawingLayer;
     this.onChangeCallback = onChange;
@@ -1886,6 +1895,30 @@ export class AppState {
     return content ? `<defs>${content}</defs>\n` : '';
   }
 
+  /** Record non-standard `xmlns:` prefixes from an imported root <svg>. */
+  private captureNamespaces(svgEl: Element): void {
+    const ALWAYS_EMITTED = new Set(['xlink', 'inkscape', 'sodipodi', 'svg']);
+    for (const attr of Array.from(svgEl.attributes)) {
+      const m = /^xmlns:(.+)$/.exec(attr.name);
+      if (m && !ALWAYS_EMITTED.has(m[1]) && attr.value) {
+        this.importedNamespaces.set(m[1], attr.value);
+      }
+    }
+  }
+
+  /**
+   * Extra ` xmlns:p="uri"` declarations to splice into a serialized root <svg>,
+   * beyond the always-emitted xlink/inkscape/sodipodi. Keeps files that use
+   * custom prefixes (Adobe i/x/graph, bx, …) valid XML on save → reload.
+   */
+  getExtraNamespaceDecls(): string {
+    let out = '';
+    for (const [prefix, uri] of this.importedNamespaces) {
+      out += ` xmlns:${prefix}="${uri.replace(/"/g, '&quot;')}"`;
+    }
+    return out;
+  }
+
   getDrawingLayerSVG(): string {
     return this.drawingLayer.innerHTML;
   }
@@ -1930,6 +1963,7 @@ export class AppState {
     this.symbolCounter = 0;
     this.gradCounter = 0;
     this.patternCounter = 0;
+    this.importedNamespaces.clear();
     // Remove imported/user defs but keep the editor's grid & transparency
     // patterns, which live in this same <defs> and back the canvas chrome.
     if (this.defsElement) {
@@ -1940,10 +1974,20 @@ export class AppState {
   }
 
   private importDefsFromSVG(svgEl: Element): void {
-    const defsEl = svgEl.querySelector('defs');
-    if (!defsEl) return;
+    // Capture any non-standard xmlns prefixes so prefixed content stays valid
+    // XML when we re-serialize (see importedNamespaces).
+    this.captureNamespaces(svgEl);
 
-    for (const child of Array.from(defsEl.children)) {
+    // A file may carry several <defs> blocks (matplotlib scatters one clipPath
+    // per <defs>; some tools nest them). Pull every entry, not just the first,
+    // or referenced clips/filters silently vanish.
+    const defsChildren: Element[] = [];
+    for (const defsEl of Array.from(svgEl.querySelectorAll('defs'))) {
+      defsChildren.push(...Array.from(defsEl.children));
+    }
+    if (defsChildren.length === 0) return;
+
+    for (const child of defsChildren) {
       // Skip the editor's own grid/transparency chrome — the canvas already
       // has it, so re-importing would duplicate it (and leak it on re-export).
       if (EDITOR_DEF_IDS.has(child.id)) continue;

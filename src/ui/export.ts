@@ -2,6 +2,7 @@ import type { AppState } from '../core/state';
 import { saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
 import { SVG_NS_DECLS } from '../core/svg-ns';
 import { bakeLayerContent } from '../core/bake';
+import { withLoadingOverlay } from './loading-overlay';
 
 const SVG_PICKER_TYPES = [
   { description: 'SVG Image', accept: { 'image/svg+xml': ['.svg'] } },
@@ -22,7 +23,7 @@ export async function exportSVG(state: AppState): Promise<void> {
   }
   const ab = state.artboard;
   const svgString = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">
+<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}${state.getExtraNamespaceDecls()} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">
 ${state.getDefsBlock()}${content}
 </svg>`;
 
@@ -52,8 +53,13 @@ export function importSVG(state: AppState): void {
     const file = fileInput.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      state.importSVGContent(reader.result as string);
+    reader.onload = async () => {
+      const text = reader.result as string;
+      if (text.length < 1_000_000) {
+        state.importSVGContent(text);
+      } else {
+        await withLoadingOverlay(`Importing ${file.name}…`, () => state.importSVGContent(text));
+      }
     };
     reader.readAsText(file);
     fileInput.value = '';
@@ -63,7 +69,7 @@ export function importSVG(state: AppState): void {
 export function exportPNG(state: AppState): void {
   const content = state.getDrawingLayerSVGForExport();
   const ab = state.artboard;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${state.getDefsBlock()}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}${state.getExtraNamespaceDecls()} viewBox="0 0 ${ab.width} ${ab.height}" width="${ab.width}" height="${ab.height}">${state.getDefsBlock()}<rect width="${ab.width}" height="${ab.height}" fill="white"/>${content}</svg>`;
 
   const img = new Image();
   const blob = new Blob([svgString], { type: 'image/svg+xml' });

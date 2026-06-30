@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 
 export class RoundedRectTool extends BaseTool {
   name = 'roundedRect';
@@ -26,17 +27,27 @@ export class RoundedRectTool extends BaseTool {
 
   onMouseMove(pt: Point, e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
+    showGestureHud('rect', e);
 
-    let x = Math.min(pt.x, this.startPt.x);
-    let y = Math.min(pt.y, this.startPt.y);
-    let w = Math.abs(pt.x - this.startPt.x);
-    let h = Math.abs(pt.y - this.startPt.y);
-
+    let dx = pt.x - this.startPt.x;
+    let dy = pt.y - this.startPt.y;
+    // Shift: constrain to a square.
     if (e.shiftKey) {
-      const size = Math.min(w, h);
-      w = size; h = size;
-      if (pt.x < this.startPt.x) x = this.startPt.x - size;
-      if (pt.y < this.startPt.y) y = this.startPt.y - size;
+      const size = Math.min(Math.abs(dx), Math.abs(dy));
+      dx = dx < 0 ? -size : size;
+      dy = dy < 0 ? -size : size;
+    }
+
+    let x: number, y: number, w: number, h: number;
+    if (e.altKey) {
+      // Alt: draw from the center — startPt is the centre, grow symmetrically.
+      w = Math.abs(dx) * 2; h = Math.abs(dy) * 2;
+      x = this.startPt.x - Math.abs(dx);
+      y = this.startPt.y - Math.abs(dy);
+    } else {
+      w = Math.abs(dx); h = Math.abs(dy);
+      x = Math.min(this.startPt.x, this.startPt.x + dx);
+      y = Math.min(this.startPt.y, this.startPt.y + dy);
     }
 
     this.currentEl.setAttribute('x', String(x));
@@ -48,6 +59,7 @@ export class RoundedRectTool extends BaseTool {
   onMouseUp(_pt: Point, _e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
     this.drawing = false;
+    hideGestureHud();
     const w = parseFloat(this.currentEl.getAttribute('width') ?? '0');
     const h = parseFloat(this.currentEl.getAttribute('height') ?? '0');
     this.currentEl.remove();

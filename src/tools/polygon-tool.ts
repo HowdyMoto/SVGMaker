@@ -1,16 +1,21 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
+import { radialDrag, type DragMods } from './radial-drag';
 
 export class PolygonShapeTool extends BaseTool {
   name = 'polygon';
   private drawing = false;
-  private center: Point = { x: 0, y: 0 };
+  private startPt: Point = { x: 0, y: 0 };
+  private lastPt: Point = { x: 0, y: 0 };
+  private mods: DragMods = { shiftKey: false, altKey: false };
   private previewEl: SVGPolygonElement | null = null;
   private sides = 6;
 
   onMouseDown(pt: Point, _e: MouseEvent): void {
     this.drawing = true;
-    this.center = { ...pt };
+    this.startPt = { ...pt };
+    this.lastPt = { ...pt };
 
     const el = document.createElementNS(this.NS, 'polygon') as SVGPolygonElement;
     this.applyStyle(el);
@@ -19,19 +24,39 @@ export class PolygonShapeTool extends BaseTool {
     this.previewEl = el;
   }
 
-  onMouseMove(pt: Point, _e: MouseEvent): void {
+  onMouseMove(pt: Point, e: MouseEvent): void {
     if (!this.drawing || !this.previewEl) return;
-    const dx = pt.x - this.center.x;
-    const dy = pt.y - this.center.y;
-    const r = Math.sqrt(dx * dx + dy * dy);
-    const startAngle = Math.atan2(dy, dx) - Math.PI / 2;
-    const pts = this.calcPolygonPoints(this.center, r, this.sides, startAngle);
+    this.lastPt = { ...pt };
+    this.mods = { shiftKey: e.shiftKey, altKey: e.altKey };
+    showGestureHud('polygon', e);
+    this.redraw();
+  }
+
+  // Up/Down arrows add or remove polygon sides while drawing; re-render from the
+  // last cursor position so it updates without needing a mouse move.
+  onKeyDown(e: KeyboardEvent): void {
+    if (!this.drawing || !this.previewEl) return;
+    if (e.key === 'ArrowUp') this.sides = Math.min(this.sides + 1, 60);
+    else if (e.key === 'ArrowDown') this.sides = Math.max(this.sides - 1, 3);
+    else return;
+    this.mods = { shiftKey: e.shiftKey, altKey: e.altKey };
+    e.preventDefault();
+    this.redraw();
+  }
+
+  private redraw(): void {
+    if (!this.previewEl) return;
+    // Drag a bounding box from the start corner (Alt = from centre); the polygon
+    // fills it, upright. Shift makes the box square → a regular polygon.
+    const { cx, cy, rx, ry } = radialDrag(this.startPt, this.lastPt, this.mods);
+    const pts = this.calcPolygonPoints(cx, cy, rx, ry, this.sides, -Math.PI / 2);
     this.previewEl.setAttribute('points', pts);
   }
 
   onMouseUp(_pt: Point, _e: MouseEvent): void {
     if (!this.drawing || !this.previewEl) return;
     this.drawing = false;
+    hideGestureHud();
     const ptsStr = this.previewEl.getAttribute('points') ?? '';
     this.previewEl.remove();
 
@@ -56,11 +81,13 @@ export class PolygonShapeTool extends BaseTool {
     this.previewEl = null;
   }
 
-  private calcPolygonPoints(center: Point, r: number, sides: number, startAngle: number): string {
+  private calcPolygonPoints(
+    cx: number, cy: number, rx: number, ry: number, sides: number, startAngle: number,
+  ): string {
     const pts: string[] = [];
     for (let i = 0; i < sides; i++) {
       const angle = startAngle + (i * 2 * Math.PI) / sides;
-      pts.push(`${center.x + r * Math.cos(angle)},${center.y + r * Math.sin(angle)}`);
+      pts.push(`${cx + rx * Math.cos(angle)},${cy + ry * Math.sin(angle)}`);
     }
     return pts.join(' ');
   }

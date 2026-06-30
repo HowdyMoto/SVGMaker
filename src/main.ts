@@ -19,6 +19,7 @@ import { ArtboardTool } from './tools/artboard-tool';
 import { ImageTool } from './tools/image';
 import { updateSelectionOverlay } from './ui/selection-overlay';
 import { renderNodeOverlay } from './ui/node-overlay';
+import { updateNodeHint } from './ui/node-hint';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { setupMenus } from './ui/menus';
@@ -33,6 +34,7 @@ import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-
 import { setupRecentFilesMenu } from './ui/recent-files';
 import { createCommandPalette } from './ui/command-palette';
 import { setupAccountUI } from './ui/account';
+import { setupNumberScrub } from './ui/number-scrub';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
 import type { CommandContext } from './commands';
@@ -118,6 +120,7 @@ function onStateChange(): void {
   renderArtboards(state, svgCanvas);
   updateSelectionOverlay(state, selectionLayer);
   renderNodeOverlay(state, guidesLayer);
+  updateNodeHint(state);
   // The contextual popover tracks the selection (and hides itself mid-gesture),
   // so update it before the interactive early-return below.
   updatePathfinderPopover(state);
@@ -310,6 +313,7 @@ if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = stat
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
 setupAccountUI(); // no-op until Supabase env vars are set (see .env.example)
+setupNumberScrub(); // Unity-style drag-to-scrub on every numeric field's label
 commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 
 // Initial render
@@ -369,11 +373,9 @@ canvasArea.addEventListener('drop', (e) => {
 function readDroppedDoc(file: File): void {
   const reader = new FileReader();
   reader.onload = () => {
-    try {
-      openTextWithoutHandle(state, reader.result as string, file.name);
-    } catch (err) {
+    openTextWithoutHandle(state, reader.result as string, file.name).catch((err) => {
       alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
-    }
+    });
   };
   reader.readAsText(file);
 }

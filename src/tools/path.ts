@@ -1,6 +1,7 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
 import { PathEditSession } from '../core/path-edit';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 
 interface PathNode {
   point: Point;
@@ -42,6 +43,7 @@ export class PathTool extends BaseTool {
     const node: PathNode = { point: { ...pt } };
     this.currentNode = node;
     this.nodes.push(node);
+    showGestureHud('pen', e);
 
     if (!this.guidesLayer) this.guidesLayer = this.svgCanvas.querySelector('#guides-layer')!;
     const dot = document.createElementNS(this.NS, 'circle') as SVGCircleElement;
@@ -55,14 +57,14 @@ export class PathTool extends BaseTool {
     this.dotEls.push(dot);
   }
 
-  onMouseMove(pt: Point, _e: MouseEvent): void {
+  onMouseMove(pt: Point, e: MouseEvent): void {
     if (this.isDragging && this.currentNode) {
       const dx = pt.x - this.currentNode.point.x;
       const dy = pt.y - this.currentNode.point.y;
       this.currentNode.controlOut = { x: this.currentNode.point.x + dx, y: this.currentNode.point.y + dy };
       this.currentNode.controlIn = { x: this.currentNode.point.x - dx, y: this.currentNode.point.y - dy };
     }
-    if (this.nodes.length > 0) this.updatePreview(pt);
+    if (this.nodes.length > 0) { showGestureHud('pen', e); this.updatePreview(pt); }
   }
 
   onMouseUp(_pt: Point, _e: MouseEvent): void {
@@ -71,7 +73,15 @@ export class PathTool extends BaseTool {
   }
 
   onKeyDown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' || e.key === 'Escape') this.finishPath();
+    if (e.key === 'Enter') this.finishPath();
+    else if (e.key === 'Escape') this.cancelPath();
+  }
+
+  /** Abandon the in-progress path without committing a shape. */
+  private cancelPath(): void {
+    this.cleanup();
+    this.nodes = [];
+    this.closed = false;
   }
 
   private buildPathD(nodes: PathNode[], trailingPt?: Point): string {
@@ -141,6 +151,7 @@ export class PathTool extends BaseTool {
     if (this.previewEl) { this.previewEl.remove(); this.previewEl = null; }
     for (const dot of this.dotEls) dot.remove();
     this.dotEls = [];
+    hideGestureHud();
   }
 
   /** Pixel hit tolerance in svg-user units. */

@@ -1,5 +1,6 @@
 import type { AppState } from '../core/state';
 import type { ShapeData } from '../core/types';
+import { showGroupHint, hideGroupHint } from './group-hint';
 
 const NS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 6;
@@ -88,6 +89,9 @@ export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElem
   selectionLayer.innerHTML = '';
   if (marquee) selectionLayer.appendChild(marquee);
 
+  // Teach double-click-to-enter whenever a single (non-isolated) group is selected.
+  updateGroupHint(state);
+
   // While node-editing a path, the node overlay owns the display.
   if (state.editingPathId) return;
 
@@ -107,6 +111,25 @@ export function updateSelectionOverlay(state: AppState, selectionLayer: SVGGElem
   const shape = state.getSelectedShape();
   if (!shape) return;
   drawSingleSelection(shape, selectionLayer);
+}
+
+/** Context-aware group-editing hint (Select tool only): teach double-click-to-
+ *  enter when a group is selected, and Esc-to-step-out once you're inside one. */
+function updateGroupHint(state: AppState): void {
+  if (state.currentTool !== 'select') { hideGroupHint(); return; }
+
+  // Inside a group (isolation active): the useful action is stepping back out.
+  if (state.activeGroupId) { showGroupHint('inside'); return; }
+
+  // A single populated group is selected (not yet entered): teach how to enter.
+  if (state.selectedShapeIds.length === 1) {
+    const s = state.findShapeById(state.selectedShapeIds[0]);
+    if (s && s.type === 'group' && (s.children?.length ?? 0) > 0) {
+      showGroupHint('enter');
+      return;
+    }
+  }
+  hideGroupHint();
 }
 
 /** Faint dashed box around the group the user has entered (isolation mode). */

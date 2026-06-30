@@ -7,6 +7,8 @@ import {
   drawSnapGuides, clearSnapGuides, SNAP_PX,
   type SnapTargets,
 } from '../core/snapping';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
+import { hideGroupHint } from '../ui/group-hint';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -160,16 +162,21 @@ export class SelectTool extends BaseTool {
     // --- Check if clicking on a shape ---
     const target = e.target as SVGElement;
 
-    // If a single nested child is already selected and you press on it, drag the
-    // child itself rather than jumping back to its group. This lets a child
-    // picked in the Layers panel be moved on the canvas (no double-click needed)
-    // and keeps an isolated child grabbable. Alt/Shift keep their normal roles.
-    if (!e.shiftKey && !e.altKey && this.state.selectedShapeIds.length === 1) {
-      const sel = this.state.getSelectedShape();
-      if (sel && sel.parentId && sel.element.contains(target)) {
+    // If you press on something that's already selected, drag the CURRENT
+    // selection as-is instead of re-resolving the click to a group. Without this,
+    // selecting a subset of a group's children (e.g. in the Layers panel) and
+    // dragging would collapse to "the whole group" and move every sibling. Also
+    // lets a single child picked in the panel be moved without a double-click.
+    // Shift/Alt keep their normal roles (extend selection / reach a child).
+    if (!e.shiftKey && !e.altKey && this.state.selectedShapeIds.length >= 1) {
+      const selected = this.getSelectedShapes();
+      const pressedSelected = selected.some(s => s.element.contains(target));
+      // Only short-circuit when it changes the outcome: a multi-selection, or a
+      // single nested child (whose click would otherwise resolve to its group).
+      if (pressedSelected && (selected.length > 1 || !!selected[0]?.parentId)) {
         this.dragging = true;
         this.state.setInteractive(true);
-        this.dragShapes = [sel];
+        this.dragShapes = selected;
         this.initDragSnap(pt);
         return;
       }
@@ -258,6 +265,7 @@ export class SelectTool extends BaseTool {
 
     // --- Rotation ---
     if (this.rotating) {
+      showGestureHud('rotate', e);
       const currentAngle = Math.atan2(pt.y - this.rotateCenter.y, pt.x - this.rotateCenter.x) * 180 / Math.PI;
       let deltaAngle = currentAngle - this.rotateStartAngle;
       if (e.shiftKey) {
@@ -279,6 +287,7 @@ export class SelectTool extends BaseTool {
 
     // --- Resize ---
     if (this.resizing && this.resizeOrigBBox) {
+      showGestureHud('resize', e);
       let dx = pt.x - this.resizeStart.x;
       let dy = pt.y - this.resizeStart.y;
       // Shift on a corner handle keeps the selection's proportions.
@@ -312,6 +321,7 @@ export class SelectTool extends BaseTool {
 
     // --- Drag move (snap-aware, absolute-from-origin) ---
     if (this.dragging) {
+      showGestureHud('move', e);
       const rawDx = pt.x - this.dragStartPt.x;
       const rawDy = pt.y - this.dragStartPt.y;
       let totalDx = rawDx, totalDy = rawDy;
@@ -331,6 +341,14 @@ export class SelectTool extends BaseTool {
         drawSnapGuides(this.guidesLayer, snap.guides);
       } else {
         clearSnapGuides(this.guidesLayer);
+      }
+
+      // Shift constrains the move to a straight horizontal/vertical line, locking
+      // whichever axis the pointer has travelled less along. Applied after snap so
+      // the locked axis stays exactly on its origin.
+      if (e.shiftKey) {
+        if (Math.abs(rawDx) >= Math.abs(rawDy)) totalDy = 0;
+        else totalDx = 0;
       }
 
       // Re-derive the incremental delta to feed translateElement().
@@ -365,8 +383,9 @@ export class SelectTool extends BaseTool {
       this.resizeOrigGeometry = null;
       this.resizeOrigTransform = null;
       this.resizeOrigFontSize = 0;
-      // Clear smart-guide overlay and snap baseline.
+      // Clear smart-guide overlay and snap baseline; dismiss the gesture HUD.
       clearSnapGuides(this.guidesLayer);
+      hideGestureHud();
       this.snapTargets = null;
       this.dragStartBBox = null;
       // Gesture done: leave interactive mode and do one full render so the side
@@ -415,10 +434,23 @@ export class SelectTool extends BaseTool {
   }
 
   onKeyDown(e: KeyboardEvent): void {
-    // Escape steps out of group isolation, keeping the current child selected.
-    if (e.key === 'Escape' && this.state.activeGroupId) {
-      this.state.exitGroupIsolation();
-    }
+    if (e.key !== 'Escape') return;
+    const g = this.state.activeGroupId;
+    if (!g) return; // not inside a group — nothing to step out of
+
+    // Step up one level: select the group we were editing inside (clear visual
+    // feedback — the selection jumps from the child to the whole group), and move
+    // isolation to that group's own parent so a further Esc steps up again.
+    const parentId = this.state.findShapeById(g)?.parentId ?? null;
+    this.state.selectShape(g);
+    if (parentId) this.state.enterGroup(parentId);
+    else this.state.exitGroupIsolation();
+  }
+
+  deactivate(): void {
+    // The group hint is a Select-tool affordance; don't let it linger when the
+    // user switches to another tool (tool changes don't re-render the overlay).
+    hideGroupHint();
   }
 
   // ---- Marquee helpers ----

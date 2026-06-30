@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 
 export class LineTool extends BaseTool {
   name = 'line';
@@ -27,6 +28,7 @@ export class LineTool extends BaseTool {
 
   onMouseMove(pt: Point, e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
+    showGestureHud('line', e);
 
     let x2 = pt.x;
     let y2 = pt.y;
@@ -48,6 +50,7 @@ export class LineTool extends BaseTool {
   onMouseUp(_pt: Point, _e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
     this.drawing = false;
+    hideGestureHud();
     const x1 = parseFloat(this.currentEl.getAttribute('x1')!);
     const y1 = parseFloat(this.currentEl.getAttribute('y1')!);
     const x2 = parseFloat(this.currentEl.getAttribute('x2')!);

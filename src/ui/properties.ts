@@ -304,6 +304,7 @@ export function setupProperties(state: AppState): void {
 
   ctrlFill.addEventListener('input', syncFromCtrl);
   ctrlStroke.addEventListener('input', syncFromCtrl);
+  ctrlStrokeWeight.addEventListener('input', syncFromCtrl);
   ctrlStrokeWeight.addEventListener('change', syncFromCtrl);
   ctrlX.addEventListener('change', syncPosFromCtrl);
   ctrlY.addEventListener('change', syncPosFromCtrl);
@@ -314,13 +315,17 @@ export function setupProperties(state: AppState): void {
     applyPosition();
   });
 
-  // Stroke weight sync
-  strokeWeight.addEventListener('change', () => {
+  // Stroke weight sync. `input` fires live (so drag-scrub previews); `change`
+  // is the final commit. Both run handleChange — matching the opacity sliders.
+  const syncStrokeWeight = () => {
     strokeWidthInput.value = strokeWeight.value;
     ctrlStrokeWeight.value = strokeWeight.value;
     handleChange();
-  });
+  };
+  strokeWeight.addEventListener('input', syncStrokeWeight);
+  strokeWeight.addEventListener('change', syncStrokeWeight);
 
+  strokeWidthInput.addEventListener('input', handleChange);
   strokeWidthInput.addEventListener('change', handleChange);
   fillOpacityInput.addEventListener('input', handleChange);
   strokeOpacityInput.addEventListener('input', handleChange);

@@ -1,5 +1,7 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
+import { radialDrag } from './radial-drag';
 
 export class EllipseTool extends BaseTool {
   name = 'ellipse';
@@ -25,17 +27,9 @@ export class EllipseTool extends BaseTool {
 
   onMouseMove(pt: Point, e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
+    showGestureHud('ellipse', e);
 
-    let rx = Math.abs(pt.x - this.startPt.x) / 2;
-    let ry = Math.abs(pt.y - this.startPt.y) / 2;
-    const cx = Math.min(pt.x, this.startPt.x) + rx;
-    const cy = Math.min(pt.y, this.startPt.y) + ry;
-
-    if (e.shiftKey) {
-      const r = Math.min(rx, ry);
-      rx = r; ry = r;
-    }
-
+    const { cx, cy, rx, ry } = radialDrag(this.startPt, pt, e);
     this.currentEl.setAttribute('cx', String(cx));
     this.currentEl.setAttribute('cy', String(cy));
     this.currentEl.setAttribute('rx', String(rx));
@@ -45,6 +39,7 @@ export class EllipseTool extends BaseTool {
   onMouseUp(_pt: Point, _e: MouseEvent): void {
     if (!this.drawing || !this.currentEl) return;
     this.drawing = false;
+    hideGestureHud();
     const rx = parseFloat(this.currentEl.getAttribute('rx') ?? '0');
     const ry = parseFloat(this.currentEl.getAttribute('ry') ?? '0');
     this.currentEl.remove();

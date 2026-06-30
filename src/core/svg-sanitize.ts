@@ -43,6 +43,11 @@ function isSafeHref(value: string): boolean {
   if (v === '') return true;
   if (v.startsWith('#')) return true;                 // internal fragment ref
   if (v.startsWith('data:image/')) return true;       // embedded raster
+  // Typeless / binary base64 blobs: Adobe Illustrator embeds PNGs as
+  // `data:;base64,…` (empty MIME, defaults to text/plain) and some tools use
+  // application/octet-stream. These decode to inert bytes — never script — in an
+  // <image>/<a> context, so allow them or the embedded artwork won't render.
+  if (/^data:(;|application\/octet-stream;)base64,/.test(v)) return true;
   // Anything with an explicit scheme other than the above is rejected
   // (javascript:, vbscript:, http:, https:, file:, blob:, non-image data:, …).
   if (/^[a-z][a-z0-9+.-]*:/.test(v)) return false;

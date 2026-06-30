@@ -1,5 +1,6 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 
 export class PolylineTool extends BaseTool {
   name = 'polyline';
@@ -22,6 +23,7 @@ export class PolylineTool extends BaseTool {
 
     this.points.push({ ...pt });
     this.updatePreview(pt);
+    showGestureHud('pen', e);
 
     if (!this.guidesLayer) this.guidesLayer = this.svgCanvas.querySelector('#guides-layer')!;
     const dot = document.createElementNS(this.NS, 'circle') as SVGCircleElement;
@@ -35,14 +37,21 @@ export class PolylineTool extends BaseTool {
     this.dotEls.push(dot);
   }
 
-  onMouseMove(pt: Point, _e: MouseEvent): void {
-    if (this.points.length > 0) this.updatePreview(pt);
+  onMouseMove(pt: Point, e: MouseEvent): void {
+    if (this.points.length > 0) { showGestureHud('pen', e); this.updatePreview(pt); }
   }
 
   onMouseUp(_pt: Point, _e: MouseEvent): void {}
 
   onKeyDown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' || e.key === 'Escape') this.finishShape();
+    if (e.key === 'Enter') this.finishShape();
+    else if (e.key === 'Escape') this.cancelShape();
+  }
+
+  /** Abandon the in-progress polyline without committing a shape. */
+  private cancelShape(): void {
+    this.cleanup();
+    this.points = [];
   }
 
   private updatePreview(currentPt: Point): void {
@@ -84,5 +93,6 @@ export class PolylineTool extends BaseTool {
     if (this.previewEl) { this.previewEl.remove(); this.previewEl = null; }
     for (const dot of this.dotEls) dot.remove();
     this.dotEls = [];
+    hideGestureHud();
   }
 }

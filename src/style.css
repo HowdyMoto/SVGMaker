@@ -55,6 +55,22 @@ html, body {
 
 input, select, button { font-family: inherit; font-size: 12px; }
 
+/* Scrubbable numeric fields (see ui/number-scrub.ts): a label that drives an
+   <input type=number> — and the input itself while unfocused — is a drag handle.
+   Hover shows the resize cursor; once focused the input shows the text caret so
+   it can still be typed into. During a drag the cursor is forced everywhere so
+   it survives leaving the handle. */
+label.num-scrub,
+input[type="number"]:not(:focus) { cursor: ew-resize; }
+body.num-scrubbing,
+body.num-scrubbing * { cursor: ew-resize !important; user-select: none !important; }
+
+/* Drop the native spinner arrows everywhere — scrubbing (and typing) replaces
+   them, and they crowd the narrow fields. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
 #app {
   display: flex;
   flex-direction: column;
@@ -732,6 +748,80 @@ input, select, button { font-family: inherit; font-size: 12px; }
   display: block;
   cursor: default;
 }
+
+/* ---- Gesture hint HUD (modifier keys / shortcuts during a gesture) ---- */
+.gesture-hud {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(40, 40, 40, 0.92);
+  border: 1px solid var(--ai-border);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  color: var(--ai-text-dim);
+  pointer-events: none; /* never intercept canvas drags */
+  z-index: 50;
+}
+.gesture-hud[hidden] { display: none; }
+
+.gesture-hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 4px;
+  border-radius: 5px;
+  transition: background 0.1s, color 0.1s;
+}
+.gesture-hud-chip.active {
+  background: var(--ai-accent);
+  color: #fff;
+}
+.gesture-hud-chip kbd {
+  font-family: inherit;
+  font-size: 10px;
+  min-width: 16px;
+  text-align: center;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--ai-text-bright);
+}
+.gesture-hud-chip.active kbd {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+.gesture-hud-label { white-space: nowrap; }
+
+/* Contextual "you selected a group" hint — same chip styling, pinned top-centre
+   so it never overlaps the bottom gesture HUD. */
+.group-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 92%;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(40, 40, 40, 0.92);
+  border: 1px solid var(--ai-border);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  color: var(--ai-text-dim);
+  pointer-events: none;
+  z-index: 50;
+}
+.group-hint[hidden] { display: none; }
 
 /* ============ RIGHT PANELS ============ */
 #panels {

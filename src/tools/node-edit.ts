@@ -38,6 +38,10 @@ export class NodeEditTool extends BaseTool {
   }
 
   onMouseDown(pt: Point, e: MouseEvent): void {
+    // The second press of a double-click is handled in onDoubleClick (add point /
+    // convert); don't let it start a marquee or clear the node selection here.
+    if (e.detail >= 2) return;
+
     const editingEl = this.editingElement();
 
     // Not editing yet: clicking a path enters edit; otherwise plain-select.
@@ -156,6 +160,49 @@ export class NodeEditTool extends BaseTool {
       if (session.selected.size > 0 && session.deleteSelected()) {
         this.state.commitPathEdit();
       }
+      return;
+    }
+    // Arrow keys nudge the selected nodes (Shift = 10× step) in the path's local
+    // units; each press commits so it's individually undoable.
+    if (e.key.startsWith('Arrow') && session.selected.size > 0) {
+      const step = e.shiftKey ? 10 : 1;
+      let dx = 0, dy = 0;
+      if (e.key === 'ArrowLeft') dx = -step;
+      else if (e.key === 'ArrowRight') dx = step;
+      else if (e.key === 'ArrowUp') dy = -step;
+      else if (e.key === 'ArrowDown') dy = step;
+      else return;
+      e.preventDefault();
+      session.moveSelected(dx, dy);
+      this.state.commitPathEdit();
+    }
+  }
+
+  /**
+   * Double-click adds or converts: on an anchor it toggles smooth ↔ corner; on a
+   * segment it inserts a new anchor at the click point and selects it. Both
+   * commit so the change is undoable.
+   */
+  onDoubleClick(pt: Point, _e: MouseEvent): void {
+    const session = this.state.pathEdit;
+    if (!session || !this.editingElement()) return;
+    const local = this.toLocal(pt);
+    const tol = this.tolerance();
+
+    const a = session.hitAnchor(local.x, local.y, tol);
+    if (a) {
+      session.selectOnly(a.sp, a.i);
+      const cur = session.anchor(a)?.type;
+      session.setSelectedType(cur === 'smooth' ? 'corner' : 'smooth');
+      this.state.commitPathEdit();
+      return;
+    }
+
+    const seg = session.hitSegment(local.x, local.y, tol * 1.6);
+    if (seg) {
+      const ref = session.insertAt(seg);
+      session.selectOnly(ref.sp, ref.i);
+      this.state.commitPathEdit();
     }
   }
 

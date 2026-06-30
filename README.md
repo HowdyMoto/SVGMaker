@@ -44,6 +44,22 @@ npm run preview   # preview the production build locally
 
 Output goes to `dist/`.
 
+### Testing
+
+Import fidelity is checked against a corpus of large, real-world SVGs (Wikimedia
+Commons maps, coats of arms, matplotlib figures — up to 79 MB / 117k elements).
+The corpus is **not** committed; download it first, then run the tests:
+
+```bash
+npm run corpus:fetch   # download the corpus from Wikimedia Commons (~313 MB)
+npm test               # Playwright: parse → edit → save round-trip per file
+```
+
+The corpus lives in [`test/corpus/`](test/corpus/) — `corpus.json` is the manifest
+(source URL + license + pinned sha256 per file); the `.svg` files are gitignored.
+Tests run in real Chrome (`channel: 'chrome'`) because the importer depends on
+browser SVG behaviour. See [`test/corpus.spec.ts`](test/corpus.spec.ts).
+
 ## Tech Stack
 
 | Layer | Technology |

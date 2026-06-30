@@ -10,6 +10,7 @@ import {
   downloadFile,
 } from '../core/file-access';
 import { rememberRecentFile } from './recent-files';
+import { withLoadingOverlay } from './loading-overlay';
 import { SVG_NS_DECLS, ensureSvgNamespaces } from '../core/svg-ns';
 
 const FORMAT_VERSION = 1;
@@ -113,7 +114,7 @@ export function serializeDocumentSVG(state: AppState): string {
   const metaJson = xmlEscape(JSON.stringify(buildMeta(state)));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS} viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w}" height="${b.h}">
+<svg xmlns="http://www.w3.org/2000/svg" ${SVG_NS_DECLS}${state.getExtraNamespaceDecls()} viewBox="${b.x} ${b.y} ${b.w} ${b.h}" width="${b.w}" height="${b.h}">
 <metadata class="svgmaker-state">${metaJson}</metadata>
 ${state.getDefsBlock()}<g class="svgmaker-doc">${state.getDrawingLayerSVG()}</g>
 </svg>`;
@@ -212,6 +213,25 @@ export function loadDocumentString(state: AppState, text: string): void {
   }
 }
 
+// Parsing/importing runs synchronously and freezes the UI; above this size that
+// stall is long enough (hundreds of ms to seconds) to need a loading overlay.
+// Below it, opening is effectively instant and an overlay would only flash.
+const HEAVY_DOC_BYTES = 1_000_000;
+
+/**
+ * Load a document string, showing a loading overlay first when the file is large
+ * enough that the synchronous import would otherwise look like a frozen app.
+ */
+export async function loadDocumentStringWithFeedback(
+  state: AppState, text: string, name: string,
+): Promise<void> {
+  if (text.length < HEAVY_DOC_BYTES) {
+    loadDocumentString(state, text);
+    return;
+  }
+  await withLoadingOverlay(`Opening ${name}…`, () => loadDocumentString(state, text));
+}
+
 // ---------------------------------------------------------------------------
 // Save / Open (File System Access with download fallback)
 // ---------------------------------------------------------------------------
@@ -282,9 +302,9 @@ export async function openProject(state: AppState): Promise<void> {
     const file = input.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        loadDocumentString(state, reader.result as string);
+        await loadDocumentStringWithFeedback(state, reader.result as string, file.name);
         currentHandle = null; // can't write back without FS Access
         setProjectName(file.name);
       } catch (err) {
@@ -297,8 +317,8 @@ export async function openProject(state: AppState): Promise<void> {
 }
 
 /** Load document text that has no writable handle (e.g. a dropped file). */
-export function openTextWithoutHandle(state: AppState, text: string, name: string): void {
-  loadDocumentString(state, text);
+export async function openTextWithoutHandle(state: AppState, text: string, name: string): Promise<void> {
+  await loadDocumentStringWithFeedback(state, text, name);
   currentHandle = null;
   setProjectName(name);
 }
@@ -306,7 +326,7 @@ export function openTextWithoutHandle(state: AppState, text: string, name: strin
 /** Open a document directly from a handle (used by Open and Recent Files). */
 export async function openHandle(state: AppState, handle: FileSystemFileHandle): Promise<void> {
   const text = await readHandle(handle);
-  loadDocumentString(state, text);
+  await loadDocumentStringWithFeedback(state, text, handle.name);
   currentHandle = handle;
   setProjectName(handle.name);
   await rememberRecentFile(handle);
