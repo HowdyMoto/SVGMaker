@@ -10,6 +10,7 @@
 import type { User } from '@supabase/supabase-js';
 import { isAuthConfigured } from '../lib/supabase';
 import { signInWith, signOut, onAuthChange, displayName, type OAuthProvider } from '../lib/auth';
+import { googleLogo, discordLogo, cloudUploadIcon } from './brand-icons';
 
 /** Last known user, kept in sync via onAuthChange. Drives command enablement. */
 let currentUser: User | null = null;
@@ -22,6 +23,25 @@ export function isSignedIn(): boolean {
 /** Sign out (no-op when unconfigured / already signed out). */
 export async function signOutUser(): Promise<void> {
   await signOut();
+}
+
+/** First letter of a name for the avatar badge (falls back to a person glyph). */
+function initial(name: string): string {
+  const ch = name.trim()[0];
+  return ch ? ch.toUpperCase() : '·';
+}
+
+/** Deterministic, pleasant hue from a string so each user gets a stable colour. */
+function hueFor(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
+
+/** Avatar badge markup: a coloured circle with the user's initial. */
+function avatarMarkup(name: string): string {
+  const bg = `hsl(${hueFor(name)} 52% 45%)`;
+  return `<span class="account-avatar" style="background:${bg}" aria-hidden="true">${initial(name)}</span>`;
 }
 
 /**
@@ -45,12 +65,16 @@ export function setupAccountUI(): void {
 
   const render = (): void => {
     if (currentUser) {
-      btn.textContent = displayName(currentUser);
+      const name = displayName(currentUser);
+      btn.className = 'account-chip';
+      btn.innerHTML = `${avatarMarkup(name)}<span class="account-name"></span>`;
+      btn.querySelector('.account-name')!.textContent = name; // textContent = safe
       btn.title = currentUser.email ?? 'Account';
-      btn.setAttribute('aria-label', `Account: ${displayName(currentUser)}`);
+      btn.setAttribute('aria-label', `Account: ${name}`);
     } else {
-      btn.textContent = 'Sign In';
-      btn.title = 'Sign in to your account';
+      btn.className = 'account-cta';
+      btn.innerHTML = `<span class="account-cta-icon">${cloudUploadIcon}</span><span>Sign In</span>`;
+      btn.title = 'Sign in to save & sync your projects';
       btn.setAttribute('aria-label', 'Sign in');
     }
   };
@@ -127,19 +151,29 @@ export function showSignInDialog(): void {
 
   const dialog = document.createElement('div');
   dialog.className = 'about-dialog signin-dialog';
+  dialog.tabIndex = -1; // focus target on open — avoids a stray ring on a button
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-label', 'Sign in to SVGMaker');
 
   dialog.innerHTML = `
     <button class="about-close" aria-label="Close">✕</button>
-    <h1 class="about-title">Sign In</h1>
-    <p class="about-tagline">Save and sync your projects across devices.</p>
+    <h1 class="about-title">Welcome to SVGMaker</h1>
+    <p class="about-tagline">Sign in to save your work and sync projects across devices.</p>
     <div class="signin-providers">
-      <button class="signin-provider" data-provider="google">Continue with Google</button>
-      <button class="signin-provider" data-provider="discord">Continue with Discord</button>
+      <button class="signin-provider signin-provider--google" data-provider="google">
+        <span class="signin-provider-logo">${googleLogo}</span>
+        <span class="signin-provider-label">Continue with Google</span>
+        <span class="signin-spinner" aria-hidden="true"></span>
+      </button>
+      <button class="signin-provider signin-provider--discord" data-provider="discord">
+        <span class="signin-provider-logo">${discordLogo}</span>
+        <span class="signin-provider-label">Continue with Discord</span>
+        <span class="signin-spinner" aria-hidden="true"></span>
+      </button>
     </div>
     <div class="signin-error" hidden></div>
+    <p class="signin-fineprint">We only use this to identify your account.</p>
   `;
 
   overlay.appendChild(dialog);
@@ -161,21 +195,27 @@ export function showSignInDialog(): void {
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
 
   const errBox = dialog.querySelector('.signin-error') as HTMLElement;
-  dialog.querySelectorAll<HTMLButtonElement>('.signin-provider').forEach((b) => {
+  const providerBtns = dialog.querySelectorAll<HTMLButtonElement>('.signin-provider');
+  providerBtns.forEach((b) => {
     b.addEventListener('click', async () => {
       const provider = b.getAttribute('data-provider') as OAuthProvider;
       errBox.hidden = true;
-      dialog.querySelectorAll<HTMLButtonElement>('.signin-provider').forEach(x => (x.disabled = true));
+      // Lock the whole set; spotlight the chosen one with a spinner.
+      providerBtns.forEach(x => (x.disabled = true));
+      b.classList.add('is-loading');
+      b.setAttribute('aria-busy', 'true');
       try {
         // Navigates away to the provider on success; control won't return here.
         await signInWith(provider);
       } catch (err) {
         errBox.textContent = err instanceof Error ? err.message : 'Sign-in failed. Is this provider enabled in Supabase?';
         errBox.hidden = false;
-        dialog.querySelectorAll<HTMLButtonElement>('.signin-provider').forEach(x => (x.disabled = false));
+        b.classList.remove('is-loading');
+        b.removeAttribute('aria-busy');
+        providerBtns.forEach(x => (x.disabled = false));
       }
     });
   });
 
-  (dialog.querySelector('.about-close') as HTMLButtonElement).focus();
+  dialog.focus({ preventScroll: true });
 }
