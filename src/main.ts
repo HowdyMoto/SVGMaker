@@ -32,6 +32,7 @@ import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from '
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
+import { readSvgFile } from './core/file-access';
 import { createCommandPalette } from './ui/command-palette';
 import { setupAccountUI } from './ui/account';
 import { setupNumberScrub } from './ui/number-scrub';
@@ -371,13 +372,9 @@ canvasArea.addEventListener('drop', (e) => {
 });
 
 function readDroppedDoc(file: File): void {
-  const reader = new FileReader();
-  reader.onload = () => {
-    openTextWithoutHandle(state, reader.result as string, file.name).catch((err) => {
-      alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
-    });
-  };
-  reader.readAsText(file);
+  readSvgFile(file)
+    .then((text) => openTextWithoutHandle(state, text, file.name))
+    .catch((err) => alert('Failed to open: ' + (err instanceof Error ? err.message : String(err))));
 }
 
 window.addEventListener('resize', () => {

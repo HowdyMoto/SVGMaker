@@ -1,5 +1,5 @@
 import type { AppState } from '../core/state';
-import { saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
+import { saveFilePicker, writeHandle, downloadFile, readSvgFile } from '../core/file-access';
 import { SVG_NS_DECLS } from '../core/svg-ns';
 import { bakeLayerContent } from '../core/bake';
 import { withLoadingOverlay } from './loading-overlay';
@@ -49,20 +49,16 @@ ${state.getDefsBlock()}${content}
 export function importSVG(state: AppState): void {
   const fileInput = document.getElementById('file-input') as HTMLInputElement;
   fileInput.click();
-  fileInput.onchange = () => {
+  fileInput.onchange = async () => {
     const file = fileInput.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const text = reader.result as string;
-      if (text.length < 1_000_000) {
-        state.importSVGContent(text);
-      } else {
-        await withLoadingOverlay(`Importing ${file.name}…`, () => state.importSVGContent(text));
-      }
-    };
-    reader.readAsText(file);
     fileInput.value = '';
+    if (!file) return;
+    const text = await readSvgFile(file);
+    if (text.length < 1_000_000) {
+      state.importSVGContent(text);
+    } else {
+      await withLoadingOverlay(`Importing ${file.name}…`, () => state.importSVGContent(text));
+    }
   };
 }
 

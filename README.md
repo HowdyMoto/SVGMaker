@@ -47,7 +47,7 @@ Output goes to `dist/`.
 ### Testing
 
 Import fidelity is checked in real Chrome (the importer depends on browser SVG
-behaviour) across two tiers:
+behaviour) across three tiers:
 
 - **Fixtures** ([`test/fixtures/`](test/fixtures/)) — small, committed, hand-made
   SVGs that each isolate one feature or edge case (gradients, filters, markers,
@@ -58,6 +58,9 @@ behaviour) across two tiers:
   Commons maps, coats of arms, matplotlib figures — up to 79 MB / 117k elements).
   **Not committed**: `corpus.json` is the manifest (source URL + license + pinned
   sha256); the `.svg` files are gitignored and fetched on demand.
+- **File decode** ([`test/file-decode.spec.ts`](test/file-decode.spec.ts)) — the
+  byte→text step: gzipped `.svgz`, and non-UTF-8 encodings (declared ISO-8859-1,
+  UTF-16 BOM).
 
 ```bash
 npm run corpus:fetch   # download the large corpus from Wikimedia Commons (~313 MB)

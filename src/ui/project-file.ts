@@ -7,6 +7,7 @@ import {
   saveFilePicker,
   writeHandle,
   readHandle,
+  readSvgFile,
   downloadFile,
 } from '../core/file-access';
 import { rememberRecentFile } from './recent-files';
@@ -304,20 +305,17 @@ export async function openProject(state: AppState): Promise<void> {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = `${SVG_EXTENSION},${LEGACY_EXTENSION},.json`;
-  input.addEventListener('change', () => {
+  input.addEventListener('change', async () => {
     const file = input.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        await loadDocumentStringWithFeedback(state, reader.result as string, file.name);
-        currentHandle = null; // can't write back without FS Access
-        setProjectName(file.name);
-      } catch (err) {
-        alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    reader.readAsText(file);
+    try {
+      const text = await readSvgFile(file);
+      await loadDocumentStringWithFeedback(state, text, file.name);
+      currentHandle = null; // can't write back without FS Access
+      setProjectName(file.name);
+    } catch (err) {
+      alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
+    }
   });
   input.click();
 }
