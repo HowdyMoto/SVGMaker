@@ -35,6 +35,10 @@
   --menubar-h: 24px;
   --controlbar-h: 32px;
   --statusbar-h: 22px;
+
+  /* Stacking ladder — keep overlay layers ordered in one place rather than as
+   * scattered magic numbers. Centered modals sit on top of everything. */
+  --z-modal: 10000;
 }
 
 html, body {
@@ -242,6 +246,49 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .cmdk-item.active .cmdk-accel { color: rgba(255, 255, 255, 0.7); }
 
 /* --- About dialog --------------------------------------------------------- */
+/* --- Modal primitive (see ui/modal.ts) ----------------------------------- */
+/* The reusable centered-dialog shell. `.modal-dialog` is the shared surface;
+ * callers add a content class for size/padding. Token-based so a theme change
+ * flows through every dialog at once. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+}
+.modal-dialog {
+  position: relative;
+  box-sizing: border-box;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--ai-panel);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  color: var(--ai-text);
+  font-size: 13px;
+}
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ai-text-dim);
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--ai-text-bright); }
+
+/* Export dialog: width only — the surface/behaviour come from .modal-dialog. */
+.export-dialog { width: 420px; }
+
 .about-overlay {
   position: fixed;
   inset: 0;
@@ -499,6 +546,162 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .signin-fineprint {
   margin-top: 16px;
   font-size: 11px;
+  color: var(--ai-text-dim);
+}
+/* Inline text links rendered as buttons (no real navigation). */
+.signin-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--ai-text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.signin-link:hover { color: var(--ai-text-bright); }
+
+/* --- Legal (Privacy / Terms) dialog (extends .about-dialog) --------------- */
+.legal-dialog {
+  width: 560px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 24px 0 0; /* body handles its own horizontal padding + scroll */
+}
+.legal-dialog:focus { outline: none; }
+.legal-heading {
+  margin: 0 28px;
+  text-align: center;
+}
+.legal-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 14px 28px 0;
+}
+.legal-tab {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--ai-text);
+  background: var(--ai-panel-darker);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.legal-tab:hover { background: var(--ai-menu-hover); color: var(--ai-text-bright); }
+.legal-body {
+  margin-top: 16px;
+  padding: 4px 28px 24px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ai-text);
+}
+.legal-body section + section { margin-top: 26px; }
+.legal-body h2 {
+  font-size: 16px;
+  color: var(--ai-text-bright);
+  margin-bottom: 2px;
+}
+.legal-body h3 {
+  font-size: 13px;
+  color: var(--ai-text-bright);
+  margin: 16px 0 2px;
+}
+.legal-body p { margin: 6px 0; }
+.legal-body .legal-date {
+  font-size: 11px;
+  color: var(--ai-text-dim);
+  margin-top: 0;
+}
+.legal-body a { color: var(--ai-accent); }
+/* "contact form" link rendered as a button inside policy prose. */
+.legal-contact-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--ai-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Contact dialog (extends .about-dialog) ------------------------------- */
+.contact-dialog { width: 440px; text-align: left; }
+.contact-dialog .about-title,
+.contact-dialog .about-tagline { text-align: center; }
+.contact-dialog:focus { outline: none; }
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 22px;
+}
+.contact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ai-text);
+}
+.contact-optional { color: var(--ai-text-dim); font-weight: 400; }
+.contact-field input,
+.contact-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--ai-text-bright);
+  background: var(--ai-input);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 6px;
+  resize: vertical;
+}
+.contact-field input:focus,
+.contact-field textarea:focus {
+  outline: none;
+  border-color: var(--ai-accent);
+}
+/* Honeypot — visually and AT-hidden, but still fillable by naive bots. */
+.contact-hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.contact-submit {
+  margin-top: 2px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai-accent);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.12s, box-shadow 0.15s;
+}
+.contact-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 2px 9px rgba(33, 150, 243, 0.45);
+}
+.contact-submit:disabled { opacity: 0.6; cursor: default; }
+.contact-error {
+  font-size: 12px;
+  color: #ff6b6b;
+  line-height: 1.4;
+}
+.contact-thanks {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ai-text-bright);
+}
+.contact-unavailable {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
   color: var(--ai-text-dim);
 }
 

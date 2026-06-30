@@ -15,6 +15,8 @@ import { exportSVG, importSVG } from './ui/export';
 import { showExportDialog } from './ui/export-dialog';
 import { exportTrack } from './ui/export-track';
 import { showAboutDialog } from './ui/about-dialog';
+import { showLegalDialog } from './ui/legal';
+import { showContactDialog } from './ui/contact-dialog';
 import { pickAndImportImage } from './ui/import-image';
 import { isAuthConfigured } from './lib/supabase';
 import { isSignedIn, showSignInDialog, signOutUser } from './ui/account';
@@ -62,6 +64,9 @@ export const COMMANDS: Command[] = [
   // ---- App ----
   { id: 'app.command-palette', label: 'Command Palette…', kind: 'action', accel: 'Mod+K', run: (c) => c.openCommandPalette() },
   { id: 'app.about', label: 'About BuzzQuill…', kind: 'action', run: () => showAboutDialog() },
+  { id: 'app.privacy', label: 'Privacy Policy', kind: 'action', run: () => showLegalDialog('privacy') },
+  { id: 'app.terms', label: 'Terms of Service', kind: 'action', run: () => showLegalDialog('terms') },
+  { id: 'app.contact', label: 'Contact Us…', kind: 'action', run: () => showContactDialog() },
 
   // ---- Account ---- (only meaningful when Supabase is configured)
   { id: 'account.signin', label: 'Sign In…', kind: 'action', enabled: () => isAuthConfigured && !isSignedIn(), run: () => showSignInDialog() },

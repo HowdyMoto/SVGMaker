@@ -11,6 +11,7 @@ import type { User } from '@supabase/supabase-js';
 import { isAuthConfigured } from '../lib/supabase';
 import { signInWith, signOut, onAuthChange, displayName, type OAuthProvider } from '../lib/auth';
 import { googleLogo, discordLogo, cloudUploadIcon } from './brand-icons';
+import { showLegalDialog } from './legal';
 
 /** Last known user, kept in sync via onAuthChange. Drives command enablement. */
 let currentUser: User | null = null;
@@ -38,10 +39,16 @@ function hueFor(name: string): number {
   return h;
 }
 
-/** Avatar badge markup: a coloured circle with the user's initial. */
+/** Avatar badge markup: a coloured circle with the user's initial. The initial
+ *  is the one piece of provider-supplied text that reaches innerHTML, so escape
+ *  it (a single char can't form a tag, but keep the sink unconditionally safe).
+ *  `hueFor` returns a number, so the inline style needs no escaping. */
 function avatarMarkup(name: string): string {
   const bg = `hsl(${hueFor(name)} 52% 45%)`;
-  return `<span class="account-avatar" style="background:${bg}" aria-hidden="true">${initial(name)}</span>`;
+  const ch = initial(name).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]!));
+  return `<span class="account-avatar" style="background:${bg}" aria-hidden="true">${ch}</span>`;
 }
 
 /**
@@ -173,7 +180,9 @@ export function showSignInDialog(): void {
       </button>
     </div>
     <div class="signin-error" hidden></div>
-    <p class="signin-fineprint">We only use this to identify your account.</p>
+    <p class="signin-fineprint">By continuing, you agree to our
+      <button type="button" class="signin-link" data-legal="terms">Terms</button> and
+      <button type="button" class="signin-link" data-legal="privacy">Privacy Policy</button>.</p>
   `;
 
   overlay.appendChild(dialog);
@@ -186,6 +195,7 @@ export function showSignInDialog(): void {
   };
 
   const onKey = (e: KeyboardEvent): void => {
+    if (document.getElementById('legal-overlay')) return; // the legal dialog (stacked on top) owns keys
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     e.stopPropagation(); // swallow canvas shortcuts while the modal is up
   };
@@ -193,6 +203,10 @@ export function showSignInDialog(): void {
 
   dialog.querySelector('.about-close')!.addEventListener('click', close);
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+
+  // Terms / Privacy links open the legal modal stacked above this one.
+  dialog.querySelectorAll<HTMLButtonElement>('.signin-link').forEach((link) =>
+    link.addEventListener('click', () => showLegalDialog(link.dataset.legal as 'privacy' | 'terms')));
 
   const errBox = dialog.querySelector('.signin-error') as HTMLElement;
   const providerBtns = dialog.querySelectorAll<HTMLButtonElement>('.signin-provider');
