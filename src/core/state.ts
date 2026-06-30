@@ -27,6 +27,17 @@ interface ClipboardEntry {
  */
 const EDITOR_DEF_IDS = new Set(['grid-small', 'grid-large', 'transparency-check']);
 
+/**
+ * Paint/style properties promoted from an inline `style` attribute to the
+ * equivalent presentation attribute on import, so the editor's attribute-based
+ * model can read and write them. See {@link AppState.flattenInlineStyle}.
+ */
+const FLATTEN_PROPS = [
+  'fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+  'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity',
+  'font-size', 'font-family', 'font-weight', 'font-style', 'rx',
+];
+
 export class AppState {
   currentTool: ToolName = 'select';
   shapes: ShapeData[] = [];
@@ -115,6 +126,15 @@ export class AppState {
    * invalid XML and won't reload. Captured on import, re-emitted on serialize.
    */
   private importedNamespaces = new Map<string, string>();
+
+  /**
+   * Paint properties that some author `<style>` rule targets in the current
+   * document. Flattening one of these from inline style to a presentation
+   * attribute can change the cascade outcome (a stylesheet rule outranks an
+   * attribute but not inline style), so {@link flattenInlineStyle} guards them.
+   * Refreshed per rebuild; empty for the common no-stylesheet case (no cost).
+   */
+  private stylesheetPaintProps = new Set<string>();
 
   constructor(drawingLayer: SVGGElement, onChange: () => void) {
     this.drawingLayer = drawingLayer;
@@ -963,6 +983,7 @@ export class AppState {
   rebuildShapesFromDOM(): void {
     this.shapes = [];
     this.shapeById.clear(); // shapes are rebuilt from scratch; drop stale cache
+    this.refreshStylesheetProps(); // which paint props an author stylesheet sets
     const elements = this.drawingLayer.children;
     let maxId = 0;
 
@@ -1044,21 +1065,54 @@ export class AppState {
   }
 
   /**
+   * Scan author `<style>` blocks for which {@link FLATTEN_PROPS} they declare,
+   * so {@link flattenInlineStyle} knows which properties need the cascade-
+   * preserving guard. Cheap and called once per rebuild; for the common case of
+   * no author stylesheet, the result is empty and flattening takes the fast path.
+   */
+  private refreshStylesheetProps(): void {
+    this.stylesheetPaintProps.clear();
+    const styles = this.drawingLayer.closest('svg')?.querySelectorAll('style');
+    if (!styles || styles.length === 0) return;
+    let css = '';
+    styles.forEach(s => { css += s.textContent || ''; });
+    for (const prop of FLATTEN_PROPS) {
+      if (new RegExp(`(^|[\\s{;])${prop}\\s*:`).test(css)) this.stylesheetPaintProps.add(prop);
+    }
+  }
+
+  /**
    * SVGs imported from other tools (e.g. Inkscape) keep their paint in the CSS
-   * `style` attribute, which overrides presentation attributes. SVGMaker reads
-   * and writes presentation attributes, so promote any inline paint properties
-   * to attributes (and drop them from `style`) so both stay in sync.
+   * `style` attribute. SVGMaker reads and writes presentation attributes, so we
+   * promote inline paint to attributes and drop it from `style` so both stay in
+   * sync.
+   *
+   * Cascade caveat: inline style outranks an author `<style>` rule, but a
+   * presentation attribute does not. So when a stylesheet also targets the
+   * property, blindly moving it to an attribute can let the stylesheet win and
+   * silently change what renders. For those properties we move the value, check
+   * the computed result is unchanged, and revert (leaving it as inline style) if
+   * it isn't — preferring faithful rendering over editability in that rare clash.
    */
   private flattenInlineStyle(el: SVGElement): void {
     if (!el.getAttribute('style')) return;
-    const props = [
-      'fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
-      'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity',
-      'font-size', 'font-family', 'font-weight', 'font-style', 'rx',
-    ];
-    for (const prop of props) {
+    for (const prop of FLATTEN_PROPS) {
       const val = el.style.getPropertyValue(prop);
-      if (val) {
+      if (!val) continue;
+
+      if (this.stylesheetPaintProps.has(prop)) {
+        const before = getComputedStyle(el).getPropertyValue(prop);
+        const hadAttr = el.hasAttribute(prop);
+        const prevAttr = hadAttr ? el.getAttribute(prop) : null;
+        el.setAttribute(prop, val);
+        el.style.removeProperty(prop);
+        if (getComputedStyle(el).getPropertyValue(prop) !== before) {
+          // Demotion changed the rendering — a stylesheet rule now wins. Revert.
+          el.style.setProperty(prop, val);
+          if (hadAttr) el.setAttribute(prop, prevAttr!);
+          else el.removeAttribute(prop);
+        }
+      } else {
         el.setAttribute(prop, val); // inline style wins, so overwrite the attribute
         el.style.removeProperty(prop);
       }
@@ -1068,25 +1122,30 @@ export class AppState {
 
   private readStyle(el: SVGElement, type: ShapeData['type']): ShapeStyle {
     this.flattenInlineStyle(el);
+    // Prefer the presentation attribute, but fall back to inline style for the
+    // rare property flattenInlineStyle left inline (a stylesheet-clash revert),
+    // so the model still reflects the value that actually renders.
+    const attr = (name: string): string | null =>
+      el.getAttribute(name) ?? (el.style.getPropertyValue(name) || null);
     if (type === 'group' || type === 'image' || type === 'use' || type === 'boolean') {
       return {
-        fill: el.getAttribute('fill') ?? 'none',
-        stroke: el.getAttribute('stroke') ?? 'none',
-        strokeWidth: parseFloat(el.getAttribute('stroke-width') ?? '0'),
-        opacity: parseFloat(el.getAttribute('opacity') ?? '1'),
+        fill: attr('fill') ?? 'none',
+        stroke: attr('stroke') ?? 'none',
+        strokeWidth: parseFloat(attr('stroke-width') ?? '0'),
+        opacity: parseFloat(attr('opacity') ?? '1'),
       };
     }
-    const fill = el.getAttribute('fill') ?? (type === 'line' ? 'none' : '#FFFFFF');
-    const stroke = el.getAttribute('stroke') ?? '#000000';
+    const fill = attr('fill') ?? (type === 'line' ? 'none' : '#FFFFFF');
+    const stroke = attr('stroke') ?? '#000000';
     // Inside/outside alignment renders at double width (see stroke-align.ts);
     // the data-stroke-align marker lets us recover the authored width.
     const align = el.getAttribute('data-stroke-align');
-    const rawWidth = parseFloat(el.getAttribute('stroke-width') ?? '1');
+    const rawWidth = parseFloat(attr('stroke-width') ?? '1');
     const strokeWidth = (align === 'inside' || align === 'outside') ? rawWidth / 2 : rawWidth;
-    const opacity = parseFloat(el.getAttribute('opacity') ?? '1');
+    const opacity = parseFloat(attr('opacity') ?? '1');
     const style: ShapeStyle = { fill, stroke, strokeWidth, opacity };
-    style.fillOpacity = parseFloat(el.getAttribute('fill-opacity') ?? '1');
-    style.strokeOpacity = parseFloat(el.getAttribute('stroke-opacity') ?? '1');
+    style.fillOpacity = parseFloat(attr('fill-opacity') ?? '1');
+    style.strokeOpacity = parseFloat(attr('stroke-opacity') ?? '1');
     style.strokeAlign = (align === 'inside' || align === 'outside') ? align : 'center';
     style.strokeLinecap = el.getAttribute('stroke-linecap') ?? 'butt';
     style.strokeLinejoin = el.getAttribute('stroke-linejoin') ?? 'miter';
