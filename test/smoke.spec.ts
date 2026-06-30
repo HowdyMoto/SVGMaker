@@ -16,13 +16,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'test/smoke/svg');
 const files = existsSync(DIR) ? readdirSync(DIR).filter(f => f.endsWith('.svg')) : [];
 
-// W3C text/entity-conformance files that import & render fine but trip our strict
-// round-trip reparse on an XML-entity-serialization edge. Allowlisted so a NEW
-// failure still fails the tier. TODO: investigate the entity serialization.
-const KNOWN_ROUNDTRIP_EDGES = new Set([
-  'struct-cond-02-t.svg', 'text-tspan-01-b.svg', 'text-ws-02-t.svg',
-]);
-
 test('W3C SVG 1.1 suite imports and round-trips without crashing', async ({ page }) => {
   test.skip(files.length === 0, 'smoke corpus missing — run `npm run smoke:fetch`');
 
@@ -60,7 +53,6 @@ test('W3C SVG 1.1 suite imports and round-trips without crashing', async ({ page
     if (res.failures.length > 40) console.log(`  …and ${res.failures.length - 40} more`);
   }
 
-  const unexpected = res.failures.filter(f => !KNOWN_ROUNDTRIP_EDGES.has(f.name));
   expect(pageErrors, 'uncaught page errors during import').toEqual([]);
-  expect(unexpected, 'NEW files that failed to import or round-trip').toEqual([]);
+  expect(res.failures, 'files that failed to import or round-trip').toEqual([]);
 });

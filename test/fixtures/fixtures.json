@@ -49,6 +49,11 @@
       "expect": {}
     },
     {
+      "file": "text-nbsp.svg",
+      "focus": "non-breaking space (U+00A0) round-trips as valid XML",
+      "expect": {}
+    },
+    {
       "file": "text-vertical-cjk.svg",
       "focus": "vertical writing-mode + CJK",
       "expect": {}

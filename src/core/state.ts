@@ -33,6 +33,19 @@ const FLATTEN_PROPS = [
   'font-size', 'font-family', 'font-weight', 'font-style', 'rx',
 ];
 
+/**
+ * `innerHTML`/`outerHTML` use HTML fragment serialization, which emits `&nbsp;`
+ * for a U+00A0 non-breaking space. That entity is undefined in XML/SVG, so the
+ * markup fails to re-parse — breaking save→reload, export, and undo/redo (history
+ * restore re-parses as XML and would silently drop the content). Map it to the
+ * numeric reference, which is valid in both. `&nbsp;` is the only non-XML entity
+ * these serializers produce, and a literal "&nbsp;" in text serializes as
+ * "&amp;nbsp;", so this never corrupts real content.
+ */
+function xmlSafeMarkup(html: string): string {
+  return html.replace(/&nbsp;/g, '&#160;');
+}
+
 export class AppState {
   currentTool: ToolName = 'select';
   shapes: ShapeData[] = [];
@@ -827,7 +840,7 @@ export class AppState {
     this.drawingLayer.querySelectorAll('[data-boolean-preview]').forEach((p) => p.remove());
     const editing = this.drawingLayer.querySelectorAll('[data-bool-editing]');
     editing.forEach((w) => w.removeAttribute('data-bool-editing'));
-    const svgContent = this.drawingLayer.innerHTML;
+    const svgContent = xmlSafeMarkup(this.drawingLayer.innerHTML);
     editing.forEach((w) => w.setAttribute('data-bool-editing', ''));
 
     return {
@@ -1560,7 +1573,7 @@ export class AppState {
         parts.push(child.outerHTML);
       }
     }
-    return parts.join('\n');
+    return xmlSafeMarkup(parts.join('\n'));
   }
 
   getDefsBlock(): string {
@@ -1593,17 +1606,17 @@ export class AppState {
   }
 
   getDrawingLayerSVG(): string {
-    return this.drawingLayer.innerHTML;
+    return xmlSafeMarkup(this.drawingLayer.innerHTML);
   }
 
   /** Like {@link getDrawingLayerSVG} but with live-boolean operands stripped, so
    *  exported files contain only the computed result paths (no hidden source
    *  geometry). Save/load uses the raw form above to keep booleans editable. */
   getDrawingLayerSVGForExport(): string {
-    if (!this.drawingLayer.querySelector('[data-boolean]')) return this.drawingLayer.innerHTML;
+    if (!this.drawingLayer.querySelector('[data-boolean]')) return xmlSafeMarkup(this.drawingLayer.innerHTML);
     const clone = this.drawingLayer.cloneNode(true) as SVGGElement;
     stripBooleanOperands(clone);
-    return clone.innerHTML;
+    return xmlSafeMarkup(clone.innerHTML);
   }
 
   clearAll(): void {

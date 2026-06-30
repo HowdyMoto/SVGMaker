@@ -59,6 +59,9 @@ add('text-tspan-positioning', 'tspan dx/dy/rotate per-glyph',
   `<text x="10" y="50" font-size="20"><tspan dx="0 2 4 6" dy="0 -2 2 -2" rotate="0 10 -10 0">Wavy</tspan></text>`);
 add('text-rtl-bidi', 'RTL / bidi text round-trip',
   `<text x="90" y="50" font-size="18" direction="rtl" text-anchor="end">שלום עולם مرحبا</text>`);
+// U+00A0 must serialize as &#160;, not the HTML-only &nbsp; (invalid XML on reload).
+add('text-nbsp', 'non-breaking space (U+00A0) round-trips as valid XML',
+  `<text x="10" y="50" font-size="16">a b c</text>`);
 add('text-vertical-cjk', 'vertical writing-mode + CJK',
   `<text x="50" y="10" font-size="18" style="writing-mode:vertical-rl">日本語のテキスト</text>`);
 
