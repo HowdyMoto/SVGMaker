@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "corpus:fetch": "node scripts/fetch-corpus.mjs",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/opentype.js": "^1.3.10",
     "typescript": "~5.9.3",
     "vite": "^8.0.0"

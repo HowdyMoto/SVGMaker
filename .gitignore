@@ -24,3 +24,16 @@ dist-ssr
 *.sw?
 
 .claude/
+
+# Large real-world SVG test corpus (~313MB): downloaded on demand via
+# `npm run corpus:fetch` (see test/corpus/corpus.json). The manifest + fetch
+# script are committed; the heavy .svg files are not.
+/test/corpus/svg/
+
+# Playwright
+/test-results/
+/playwright-report/
+/.playwright/
+
+# Supabase CLI local cache
+/supabase/.temp/
