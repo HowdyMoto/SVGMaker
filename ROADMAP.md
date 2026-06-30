@@ -1,10 +1,10 @@
-# SVGMaker Feature Roadmap
+# BuzzQuill Feature Roadmap
 
-> A phased plan to bring SVGMaker's authoring capabilities in line with the full SVG specification.
+> A phased plan to bring BuzzQuill's authoring capabilities in line with the full SVG specification.
 
 ## Current Baseline (v0.0.0)
 
-What SVGMaker supports today:
+What BuzzQuill supports today:
 
 - **Shapes:** rect, rounded-rect, ellipse, line, polyline, path (pen tool), polygon, star
 - **Text:** basic text creation and editing with font properties
@@ -257,7 +257,7 @@ What SVGMaker supports today:
 
 ## SVG Feature Coverage Checklist
 
-After all phases, SVGMaker will support authoring of:
+After all phases, BuzzQuill will support authoring of:
 
 - [x] Basic shapes (rect, circle, ellipse, line, polyline, polygon, path)
 - [x] Star / regular polygon

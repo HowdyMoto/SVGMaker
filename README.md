@@ -1,4 +1,4 @@
-# SVGMaker
+# BuzzQuill
 
 A browser-based SVG design editor inspired by Adobe Illustrator, built with TypeScript and Vite. Create, edit, and export vector graphics with a professional-grade interface — no server required.
 

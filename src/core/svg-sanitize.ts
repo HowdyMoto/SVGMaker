@@ -1,7 +1,7 @@
 /**
  * Security sanitization for untrusted SVG entering the live DOM.
  *
- * SVGMaker opens arbitrary `.svg` / `.svgmaker` files and pastes SVG from the
+ * BuzzQuill opens arbitrary `.svg` / `.svgmaker` files and pastes SVG from the
  * system clipboard. That content is injected into the live document (via
  * `innerHTML` and `importNode` + `appendChild`), so it must be treated as
  * untrusted: a crafted file must not be able to run script in our origin or
@@ -19,13 +19,13 @@
  *     animation, `<iframe>`, …).
  *
  * This is a hardening allow-list, not a general HTML sanitizer; it runs on the
- * SVG subtrees SVGMaker actually imports.
+ * SVG subtrees BuzzQuill actually imports.
  */
 
 import { SVG_NS_DECLS } from './svg-ns';
 
 /**
- * Elements removed wholesale (with their subtree) on import. SVGMaker never
+ * Elements removed wholesale (with their subtree) on import. BuzzQuill never
  * produces these and has no model for them, so dropping them loses no user data.
  * `<a>` and `<use>` are deliberately NOT here — they carry legitimate content
  * (wrapped shapes / symbol instances); their only risk is an unsafe `href`,

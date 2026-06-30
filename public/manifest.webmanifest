@@ -1,6 +1,6 @@
 {
-  "name": "SVGMaker",
-  "short_name": "SVGMaker",
+  "name": "BuzzQuill",
+  "short_name": "BuzzQuill",
   "description": "A browser-based SVG editor for drawing, editing and exporting vector graphics.",
   "start_url": ".",
   "scope": ".",

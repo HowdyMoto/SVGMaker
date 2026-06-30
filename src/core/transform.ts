@@ -3,7 +3,7 @@
  * (SVGTransformList / SVGTransform) rather than regex on the `transform` string.
  *
  * The string approach only matched the exact `translate(x, y)` / `rotate(a, …)`
- * forms SVGMaker itself wrote, and silently mishandled anything else — an
+ * forms BuzzQuill itself wrote, and silently mishandled anything else — an
  * imported `matrix(...)`, scientific notation, or a second transform in the
  * list. The typed API composes correctly regardless of what's already there.
  *

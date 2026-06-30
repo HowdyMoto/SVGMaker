@@ -154,11 +154,11 @@ export function showSignInDialog(): void {
   dialog.tabIndex = -1; // focus target on open — avoids a stray ring on a button
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Sign in to SVGMaker');
+  dialog.setAttribute('aria-label', 'Sign in to BuzzQuill');
 
   dialog.innerHTML = `
     <button class="about-close" aria-label="Close">✕</button>
-    <h1 class="about-title">Welcome to SVGMaker</h1>
+    <h1 class="about-title">Welcome to BuzzQuill</h1>
     <p class="about-tagline">Sign in to save your work and sync projects across devices.</p>
     <div class="signin-providers">
       <button class="signin-provider signin-provider--google" data-provider="google">

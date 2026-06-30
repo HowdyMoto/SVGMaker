@@ -1,5 +1,5 @@
 /**
- * A simple, dismissible "About SVGMaker" modal. Self-contained like
+ * A simple, dismissible "About BuzzQuill" modal. Self-contained like
  * showExportDialog(): it builds its own overlay, owns its lifecycle, and tears
  * everything down on close. Reached via the Help menu and the command palette
  * (see the `app.about` command in commands.ts).
@@ -18,14 +18,14 @@ export function showAboutDialog(): void {
   dialog.className = "about-dialog";
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
-  dialog.setAttribute("aria-label", "About SVGMaker");
+  dialog.setAttribute("aria-label", "About BuzzQuill");
 
   const iconSrc = `${import.meta.env.BASE_URL}icon.svg`;
 
   dialog.innerHTML = `
     <button class="about-close" aria-label="Close">✕</button>
     <img class="about-logo" src="${iconSrc}" alt="" width="72" height="72" />
-    <h1 class="about-title">SVGMaker</h1>
+    <h1 class="about-title">BuzzQuill</h1>
     <div class="about-version">Version ${__APP_VERSION__} · ${__BUILD_DATE__} · ${__BUILD_SHA__}</div>
     <p class="about-tagline">A browser-based SVG editor.</p>
     <div class="about-copyright">© 2026 · All rights reserved. WrightGeist LLC</div>

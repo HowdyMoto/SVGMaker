@@ -61,7 +61,7 @@ const primary = (c: CommandContext) => c.state.getSelectedShape();
 export const COMMANDS: Command[] = [
   // ---- App ----
   { id: 'app.command-palette', label: 'Command Palette…', kind: 'action', accel: 'Mod+K', run: (c) => c.openCommandPalette() },
-  { id: 'app.about', label: 'About SVGMaker…', kind: 'action', run: () => showAboutDialog() },
+  { id: 'app.about', label: 'About BuzzQuill…', kind: 'action', run: () => showAboutDialog() },
 
   // ---- Account ---- (only meaningful when Supabase is configured)
   { id: 'account.signin', label: 'Sign In…', kind: 'action', enabled: () => isAuthConfigured && !isSignedIn(), run: () => showSignInDialog() },

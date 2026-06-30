@@ -30,7 +30,7 @@ function setProjectName(name: string | null): void {
   const label = document.getElementById('project-name');
   const display = name ?? 'Untitled';
   if (label) label.textContent = display;
-  document.title = `${display} — SVGMaker`;
+  document.title = `${display} — BuzzQuill`;
 }
 
 /** Reset to a fresh, unsaved document (called when starting a new file). */
@@ -60,8 +60,14 @@ interface SerializedShape {
   locked: boolean;
 }
 
+// 'SVGMaker' is the pre-rename identifier — still accepted on read so existing
+// files keep opening; new files are written as 'BuzzQuill'.
+type AppId = 'BuzzQuill' | 'SVGMaker';
+const APP_ID: AppId = 'BuzzQuill';
+const isKnownApp = (v: unknown): boolean => v === 'BuzzQuill' || v === 'SVGMaker';
+
 interface DocMeta {
-  app: 'SVGMaker';
+  app: AppId;
   version: number;
   artboards: Artboard[];
   activeArtboardId: string | null;
@@ -73,7 +79,7 @@ interface DocMeta {
 
 function buildMeta(state: AppState): DocMeta {
   return {
-    app: 'SVGMaker',
+    app: APP_ID,
     version: FORMAT_VERSION,
     artboards: state.artboards.map(ab => ({ ...ab })),
     activeArtboardId: state.activeArtboardId,
@@ -150,14 +156,14 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
   if (metaEl?.textContent) {
     try {
       const parsed = JSON.parse(metaEl.textContent.trim());
-      if (parsed && parsed.app === 'SVGMaker') meta = parsed as DocMeta;
+      if (parsed && isKnownApp(parsed.app)) meta = parsed as DocMeta;
     } catch { /* not our metadata — treat as a foreign SVG */ }
   }
 
   if (meta) {
     // ---- Our document: restore everything ----
     if (meta.version > FORMAT_VERSION) {
-      throw new Error(`This file was made with a newer SVGMaker (v${meta.version}). Please update.`);
+      throw new Error(`This file was made with a newer BuzzQuill (v${meta.version}). Please update.`);
     }
 
     if (meta.artboards?.length) {
@@ -284,7 +290,7 @@ export async function openProject(state: AppState): Promise<void> {
   if (supportsFileSystemAccess()) {
     try {
       const handle = await openFilePicker([
-        { description: 'SVG / SVGMaker', accept: { [SVG_MIME]: [SVG_EXTENSION], 'application/json': [LEGACY_EXTENSION] } },
+        { description: 'SVG / BuzzQuill', accept: { [SVG_MIME]: [SVG_EXTENSION], 'application/json': [LEGACY_EXTENSION] } },
       ]);
       if (!handle) return; // cancelled
       await openHandle(state, handle);
@@ -338,7 +344,7 @@ export async function openHandle(state: AppState, handle: FileSystemFileHandle):
 
 interface ProjectFile {
   version: number;
-  app: 'SVGMaker';
+  app: AppId;
   artboards: Artboard[];
   activeArtboardId: string | null;
   shapes: SerializedShape[];
@@ -350,9 +356,9 @@ interface ProjectFile {
 
 export function loadProject(state: AppState, json: string): void {
   const project = JSON.parse(json) as ProjectFile;
-  if (project.app !== 'SVGMaker') throw new Error('Not a valid SVGMaker file.');
+  if (!isKnownApp(project.app)) throw new Error('Not a valid BuzzQuill file.');
   if (!project.version || project.version > FORMAT_VERSION) {
-    throw new Error(`File version ${project.version} is newer than this version of SVGMaker supports.`);
+    throw new Error(`File version ${project.version} is newer than this version of BuzzQuill supports.`);
   }
 
   if (project.artboards?.length) {

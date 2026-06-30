@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = join(ROOT, 'test/corpus/corpus.json');
 // Wikimedia asks bots/scripts to send a descriptive UA with contact info.
-const UA = 'SVGMaker-corpus-fetcher/1.0 (https://github.com/HowdyMoto/SVGMaker; test corpus)';
+const UA = 'BuzzQuill-corpus-fetcher/1.0 (https://github.com/HowdyMoto/SVGMaker; test corpus)';
 const force = process.argv.includes('--force');
 
 const sha256 = buf => createHash('sha256').update(buf).digest('hex');

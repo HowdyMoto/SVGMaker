@@ -1083,7 +1083,7 @@ export class AppState {
 
   /**
    * SVGs imported from other tools (e.g. Inkscape) keep their paint in the CSS
-   * `style` attribute. SVGMaker reads and writes presentation attributes, so we
+   * `style` attribute. BuzzQuill reads and writes presentation attributes, so we
    * promote inline paint to attributes and drop it from `style` so both stay in
    * sync.
    *

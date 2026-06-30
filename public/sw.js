@@ -1,5 +1,5 @@
-/* SVGMaker service worker — offline app shell + runtime caching. */
-const CACHE = 'svgmaker-v1';
+/* BuzzQuill service worker — offline app shell + runtime caching. */
+const CACHE = 'buzzquill-v1';
 const APP_SHELL = ['.', 'index.html', 'manifest.webmanifest', 'favicon.svg', 'icon.svg'];
 
 self.addEventListener('install', (event) => {
