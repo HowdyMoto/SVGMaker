@@ -46,19 +46,27 @@ Output goes to `dist/`.
 
 ### Testing
 
-Import fidelity is checked against a corpus of large, real-world SVGs (Wikimedia
-Commons maps, coats of arms, matplotlib figures — up to 79 MB / 117k elements).
-The corpus is **not** committed; download it first, then run the tests:
+Import fidelity is checked in real Chrome (the importer depends on browser SVG
+behaviour) across two tiers:
+
+- **Fixtures** ([`test/fixtures/`](test/fixtures/)) — small, committed, hand-made
+  SVGs that each isolate one feature or edge case (gradients, filters, markers,
+  `textPath`, CSS cascade, SMIL/`foreignObject` degradation, self-referential
+  `<use>`, entity bombs, security injection, …). Expectations are in
+  `fixtures.json`; regenerate with `npm run fixtures:gen`.
+- **Corpus** ([`test/corpus/`](test/corpus/)) — large real-world SVGs (Wikimedia
+  Commons maps, coats of arms, matplotlib figures — up to 79 MB / 117k elements).
+  **Not committed**: `corpus.json` is the manifest (source URL + license + pinned
+  sha256); the `.svg` files are gitignored and fetched on demand.
 
 ```bash
-npm run corpus:fetch   # download the corpus from Wikimedia Commons (~313 MB)
-npm test               # Playwright: parse → edit → save round-trip per file
+npm run corpus:fetch   # download the large corpus from Wikimedia Commons (~313 MB)
+npm test               # Playwright: parse → edit → save round-trip across both tiers
 ```
 
-The corpus lives in [`test/corpus/`](test/corpus/) — `corpus.json` is the manifest
-(source URL + license + pinned sha256 per file); the `.svg` files are gitignored.
-Tests run in real Chrome (`channel: 'chrome'`) because the importer depends on
-browser SVG behaviour. See [`test/corpus.spec.ts`](test/corpus.spec.ts).
+Each test asserts a file imports cleanly, loses no rendering content, round-trips
+to valid XML, survives arbitrary edits, and renders non-blank. See
+[`test/fixtures.spec.ts`](test/fixtures.spec.ts) and [`test/corpus.spec.ts`](test/corpus.spec.ts).
 
 ## Tech Stack
 
