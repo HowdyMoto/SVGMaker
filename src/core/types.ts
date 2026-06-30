@@ -57,6 +57,15 @@ export interface ShapeData {
   booleanOp?: 'unite' | 'subtract' | 'intersect' | 'exclude';
 }
 
+/** Drop-shadow parameters for an object effect (see AppState.setObjectShadow). */
+export interface ObjectShadow {
+  dx: number;
+  dy: number;
+  blur: number;
+  color: string;
+  opacity: number;
+}
+
 export interface SymbolDef {
   id: string;
   name: string;

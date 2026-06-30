@@ -1,4 +1,4 @@
-import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef, GradientDef, GradientStop, PatternDef } from './types';
+import type { ToolName, ShapeData, HistoryEntry, ShapeStyle, Artboard, SymbolDef, GradientDef, GradientStop, PatternDef, ObjectShadow } from './types';
 import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
@@ -60,6 +60,10 @@ export class AppState {
 
   private idCounter = 0;
   private abCounter = 0;
+  // Step-and-repeat: the offset the next ⌘D applies, and the ids of the most
+  // recent duplicate (so moving exactly that copy refines the offset).
+  private stepOffset: { dx: number; dy: number } | null = null;
+  private lastDuplicateIds: string[] = [];
   private history: HistoryEntry[] = [];
   private historyIndex = -1;
   private savedHistoryIndex = 0; // history index matching the last save/open/new
@@ -659,19 +663,46 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  /** Duplicate the entire current selection in a single undo step. */
+  /**
+   * Duplicate the selection in one undo step, Figma-style "step and repeat": the
+   * copy is offset by {@link stepOffset}. After you nudge a fresh duplicate into
+   * place (recorded via {@link notifyMovedSelection}), repeating ⌘D keeps applying
+   * that same offset, so you build an evenly-spaced array by pressing ⌘D, move,
+   * ⌘D, ⌘D, ⌘D…
+   */
   duplicateSelected(): void {
     const ids = [...this.selectedShapeIds];
     if (ids.length === 0) return;
+    const off = this.stepOffset ?? { dx: 10, dy: 10 };
     const newIds: string[] = [];
     for (const id of ids) {
-      const newId = this.cloneShapeById(id);
+      const newId = this.cloneShapeById(id, off.dx, off.dy);
       if (newId) newIds.push(newId);
     }
     if (newIds.length === 0) return;
     this.selectedShapeIds = newIds;
+    // Remember this copy and the step, so a move of *this* copy refines the offset
+    // and further ⌘D presses continue the pattern.
+    this.lastDuplicateIds = [...newIds];
+    this.stepOffset = off;
     this.saveHistory();
     this.onChangeCallback();
+  }
+
+  /**
+   * Told by the Select tool when a drag-move finishes. If it moved exactly the
+   * shapes produced by the last duplicate, that delta becomes the step-and-repeat
+   * offset; any other move breaks the chain so the next ⌘D uses the default.
+   */
+  notifyMovedSelection(dx: number, dy: number): void {
+    const moved = [...this.selectedShapeIds].sort().join(',');
+    const lastDup = [...this.lastDuplicateIds].sort().join(',');
+    if (lastDup && moved === lastDup && (dx !== 0 || dy !== 0)) {
+      this.stepOffset = { dx, dy };
+    } else {
+      this.lastDuplicateIds = [];
+      this.stepOffset = null;
+    }
   }
 
   /**
@@ -679,7 +710,7 @@ export class AppState {
    * Does NOT record history / select / notify — callers batch those so a
    * multi-duplicate is one undo step.
    */
-  private cloneShapeById(id: string): string | null {
+  private cloneShapeById(id: string, dx = 10, dy = 10): string | null {
     const shape = this.shapes.find(s => s.id === id);
     if (!shape) return null;
     const newEl = shape.element.cloneNode(true) as SVGElement;
@@ -688,15 +719,9 @@ export class AppState {
     // Re-id descendants so a duplicated group doesn't share child ids with the
     // original (which corrupts findShapeById / idCounter after a history rebuild).
     if (shape.type === 'group') this.reIdGroupChildren(newEl);
-    const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
-    const tag = newEl.tagName.toLowerCase();
-    if (tag === 'rect' || tag === 'text') {
-      newEl.setAttribute('x', String(bbox.x + 10));
-      newEl.setAttribute('y', String(bbox.y + 10));
-    } else if (tag === 'ellipse') {
-      newEl.setAttribute('cx', String(parseFloat(newEl.getAttribute('cx') ?? '0') + 10));
-      newEl.setAttribute('cy', String(parseFloat(newEl.getAttribute('cy') ?? '0') + 10));
-    }
+    // Offset the copy uniformly (works for every shape type, incl. paths/groups),
+    // which also drives Figma-style step-and-repeat via the recorded stepOffset.
+    this.offsetElement(newEl, dx, dy);
     const name = `${shape.type} ${newId.replace('shape-', '#')}`;
     newEl.setAttribute('data-name', name);
     this.shapes.push({
@@ -1047,6 +1072,11 @@ export class AppState {
     }
     this.idCounter = Math.max(this.idCounter, maxId);
     this.clearStaleIsolation();
+    // Effect <filter> defs aren't in the history snapshot — rebuild them from the
+    // round-tripped data-fx-* attrs so blur/shadow survive undo, redo, and load.
+    this.ensureEffectFilters();
+    // Likewise the shared marker library, if any element references it.
+    if (this.drawingLayer.querySelector('[marker-start],[marker-end]')) this.ensureMarkerDefs();
   }
 
   private detectType(el: SVGElement): ShapeData['type'] | null {
@@ -1306,6 +1336,9 @@ export class AppState {
     if (idx === -1) return;
     const group = this.shapes[idx];
     if (group.type !== 'group' || !group.children) return;
+    // Ungrouping a clip group would delete the clip shape (it lives in a non-model
+    // <clipPath>). Release the mask instead, which restores it as a normal child.
+    if (group.element.hasAttribute('data-clip-group')) { this.releaseClippingMask(id); return; }
 
     // Move children out of the group element back to drawing layer
     const gEl = group.element;
@@ -1564,6 +1597,234 @@ export class AppState {
     shape.element = path;
     shape.type = 'path';
     return true;
+  }
+
+  // ---- Clipping masks ----
+
+  /**
+   * Make a clipping mask from the selection (Illustrator's ⌘7): the TOPMOST
+   * selected object becomes the mask, and everything below it is wrapped in a
+   * group clipped to that shape. The mask geometry lives in an inline `<clipPath>`
+   * *inside* the group, so the whole thing round-trips through history markup (no
+   * defs needed — defs aren't part of the innerHTML snapshot). Returns false when
+   * fewer than two shapes are selected.
+   */
+  makeClippingMask(): boolean {
+    const idSet = new Set(this.selectedShapeIds);
+    const members: ShapeData[] = [];
+    const remaining: ShapeData[] = [];
+    let insertIdx = -1;
+    for (const s of this.shapes) {
+      if (idSet.has(s.id)) { if (insertIdx === -1) insertIdx = remaining.length; members.push(s); }
+      else remaining.push(s);
+    }
+    if (members.length < 2) return false;
+
+    const clip = members[members.length - 1]; // topmost = the mask
+    const clipped = members.slice(0, -1);
+
+    const SVG = 'http://www.w3.org/2000/svg';
+    const gEl = document.createElementNS(SVG, 'g');
+    const groupId = this.nextId();
+    gEl.id = groupId;
+    const name = `Clip Group ${groupId.replace('shape-', '#')}`;
+    gEl.setAttribute('data-name', name);
+    gEl.setAttribute('data-clip-group', '');
+    const clipId = `clipmask-${groupId.replace('shape-', '')}`;
+    gEl.setAttribute('clip-path', `url(#${clipId})`);
+
+    // The mask shape moves into a non-rendering <clipPath>; it's consumed as the
+    // clip region (matches Illustrator, where the top object becomes the mask).
+    const clipPathEl = document.createElementNS(SVG, 'clipPath');
+    clipPathEl.setAttribute('id', clipId);
+    clipPathEl.appendChild(clip.element);
+    gEl.appendChild(clipPathEl);
+
+    for (const s of clipped) { gEl.appendChild(s.element); s.parentId = groupId; }
+
+    const insertBefore = remaining[insertIdx]?.element ?? null;
+    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
+    else this.drawingLayer.appendChild(gEl);
+
+    const groupShape: ShapeData = {
+      id: groupId, type: 'group', element: gEl, name,
+      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
+      visible: true, locked: false, children: clipped,
+    };
+    remaining.splice(insertIdx < 0 ? remaining.length : insertIdx, 0, groupShape);
+    this.shapes = remaining;
+    this.selectedShapeIds = [groupId];
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
+  /** Release a clipping mask: restore the mask shape as a normal top child and
+   *  drop the clip, leaving a plain group (Illustrator's ⌘⌥7). */
+  releaseClippingMask(id: string): void {
+    const shape = this.findShapeById(id);
+    if (!shape || !shape.element.hasAttribute('data-clip-group')) return;
+    const gEl = shape.element;
+    const clipPathEl = Array.from(gEl.children).find(c => c.tagName.toLowerCase() === 'clippath');
+    const clipShape = clipPathEl?.firstElementChild as SVGElement | null;
+    if (clipShape) gEl.appendChild(clipShape); // back on top, as a normal child
+    clipPathEl?.remove();
+    gEl.removeAttribute('clip-path');
+    gEl.removeAttribute('data-clip-group');
+    gEl.setAttribute('data-name', `Group ${id.replace('shape-', '#')}`);
+    this.rebuildShapesFromDOM();
+    this.selectedShapeIds = [id];
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  // ---- Effects (blur / drop shadow via SVG filters) ----
+  //
+  // Effect parameters are the source of truth and live as data-fx-* attributes on
+  // the element, so they round-trip through the history/innerHTML snapshot. The
+  // SVG <filter> in <defs> is a regenerated CACHE (defs aren't snapshotted), so
+  // ensureEffectFilters() rebuilds it after every rebuildShapesFromDOM/import.
+
+  getObjectEffects(id: string): { blur: number; shadow: ObjectShadow | null } {
+    const el = this.findShapeById(id)?.element;
+    const blur = el ? (parseFloat(el.getAttribute('data-fx-blur') || '0') || 0) : 0;
+    let shadow: ObjectShadow | null = null;
+    const sa = el?.getAttribute('data-fx-shadow');
+    if (sa) {
+      const [dx, dy, b, color, op] = sa.split(',');
+      shadow = { dx: parseFloat(dx) || 0, dy: parseFloat(dy) || 0, blur: parseFloat(b) || 0, color: color || '#000000', opacity: parseFloat(op) || 0 };
+    }
+    return { blur, shadow };
+  }
+
+  // `record` lets a slider apply live on `input` (record=false) and commit one
+  // history entry on `change` (record=true), so a drag doesn't flood undo.
+  setObjectBlur(id: string, stdDev: number, record = true): void {
+    const el = this.findShapeById(id)?.element;
+    if (!el) return;
+    if (stdDev > 0) el.setAttribute('data-fx-blur', String(stdDev));
+    else el.removeAttribute('data-fx-blur');
+    this.applyEffectFilter(el);
+    if (record) this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  setObjectShadow(id: string, shadow: ObjectShadow | null, record = true): void {
+    const el = this.findShapeById(id)?.element;
+    if (!el) return;
+    if (shadow) el.setAttribute('data-fx-shadow', `${shadow.dx},${shadow.dy},${shadow.blur},${shadow.color},${shadow.opacity}`);
+    else el.removeAttribute('data-fx-shadow');
+    this.applyEffectFilter(el);
+    if (record) this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  // ---- Markers (arrowheads / dots on line & path ends) ----
+  //
+  // The marker-start/marker-end presentation attributes round-trip through the
+  // history snapshot; the shared <marker> library lives in <defs> and is rebuilt
+  // by ensureMarkerDefs() (defs aren't snapshotted). fill="context-stroke" makes
+  // each arrowhead match its path's stroke colour.
+
+  /** Create the standard marker library in <defs> once (idempotent). */
+  ensureMarkerDefs(): void {
+    const defs = this.ensureDefs();
+    if (defs.querySelector('[id="mk-arrow"]')) return;
+    const SVG = 'http://www.w3.org/2000/svg';
+    const make = (id: string, w: string, h: string, refX: string, inner: string) => {
+      const m = document.createElementNS(SVG, 'marker');
+      m.setAttribute('id', id);
+      m.setAttribute('viewBox', '0 0 10 10');
+      m.setAttribute('markerUnits', 'strokeWidth');
+      m.setAttribute('orient', 'auto-start-reverse');
+      m.setAttribute('markerWidth', w); m.setAttribute('markerHeight', h);
+      m.setAttribute('refX', refX); m.setAttribute('refY', '5');
+      m.innerHTML = inner;
+      defs.appendChild(m);
+    };
+    make('mk-arrow', '8', '8', '9', '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>');
+    make('mk-dot', '6', '6', '5', '<circle cx="5" cy="5" r="4" fill="context-stroke"/>');
+    make('mk-open', '9', '9', '8', '<path d="M1,1 L9,5 L1,9" fill="none" stroke="context-stroke" stroke-width="1.5"/>');
+  }
+
+  getMarkers(id: string): { start: string; end: string } {
+    const el = this.findShapeById(id)?.element;
+    const read = (attr: string) => el?.getAttribute(attr)?.match(/url\(#(mk-[a-z]+)\)/)?.[1] ?? '';
+    return { start: read('marker-start'), end: read('marker-end') };
+  }
+
+  setMarker(id: string, pos: 'start' | 'end', markerId: string | null): void {
+    const el = this.findShapeById(id)?.element;
+    if (!el) return;
+    this.ensureMarkerDefs();
+    const attr = `marker-${pos}`;
+    if (markerId) el.setAttribute(attr, `url(#${markerId})`);
+    else el.removeAttribute(attr);
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Blend mode (mix-blend-mode) of an object; 'normal' = none. Stored as inline
+   *  style, which round-trips through the history/innerHTML snapshot. */
+  getBlendMode(id: string): string {
+    const el = this.findShapeById(id)?.element as SVGElement | undefined;
+    return el?.style.mixBlendMode || 'normal';
+  }
+
+  setBlendMode(id: string, mode: string): void {
+    const el = this.findShapeById(id)?.element as SVGElement | undefined;
+    if (!el) return;
+    if (mode && mode !== 'normal') el.style.mixBlendMode = mode;
+    else el.style.removeProperty('mix-blend-mode');
+    if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** (Re)build or remove an element's `<filter>` from its data-fx-* attributes. */
+  private applyEffectFilter(el: SVGElement): void {
+    const blur = parseFloat(el.getAttribute('data-fx-blur') || '0') || 0;
+    const shadowAttr = el.getAttribute('data-fx-shadow');
+    const fid = `fx-${el.id}`;
+    const defs = this.ensureDefs();
+    defs.querySelector(`[id="${fid}"]`)?.remove();
+
+    if (blur <= 0 && !shadowAttr) {
+      if (el.getAttribute('filter') === `url(#${fid})`) el.removeAttribute('filter');
+      return;
+    }
+    const SVG = 'http://www.w3.org/2000/svg';
+    const filter = document.createElementNS(SVG, 'filter');
+    filter.setAttribute('id', fid);
+    // Roomy region so blur / shadow spread isn't clipped.
+    filter.setAttribute('x', '-50%'); filter.setAttribute('y', '-50%');
+    filter.setAttribute('width', '200%'); filter.setAttribute('height', '200%');
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    let input = 'SourceGraphic';
+    if (blur > 0) {
+      const fe = document.createElementNS(SVG, 'feGaussianBlur');
+      fe.setAttribute('in', input); fe.setAttribute('stdDeviation', String(blur));
+      fe.setAttribute('result', 'fxblur'); filter.appendChild(fe); input = 'fxblur';
+    }
+    if (shadowAttr) {
+      const [dx, dy, b, color, op] = shadowAttr.split(',');
+      const fe = document.createElementNS(SVG, 'feDropShadow');
+      fe.setAttribute('in', input);
+      fe.setAttribute('dx', dx || '0'); fe.setAttribute('dy', dy || '0');
+      fe.setAttribute('stdDeviation', b || '0');
+      fe.setAttribute('flood-color', color || '#000000');
+      fe.setAttribute('flood-opacity', op || '1');
+      filter.appendChild(fe);
+    }
+    defs.appendChild(filter);
+    el.setAttribute('filter', `url(#${fid})`);
+  }
+
+  /** Regenerate every effect filter from its element's data-fx-* attrs (defs are
+   *  not part of the history snapshot, so they must be rebuilt after restore). */
+  private ensureEffectFilters(): void {
+    this.drawingLayer.querySelectorAll('[data-fx-blur],[data-fx-shadow]')
+      .forEach((el) => this.applyEffectFilter(el as SVGElement));
   }
 
   private ensureDefs(): SVGDefsElement {

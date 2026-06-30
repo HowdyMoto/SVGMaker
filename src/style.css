@@ -2246,3 +2246,26 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
   background: var(--ai-border, #444);
 }
 .pathfinder-popover .pf-pop-swap.active { background: #2d7ff9; color: #fff; }
+
+/* Effects panel (blur / drop shadow) */
+.fx-color {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--ai-border, #444);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+/* Effects/markers/blend dropdowns */
+.appearance-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  padding: 3px 4px;
+  border: 1px solid var(--ai-border, #444);
+  border-radius: 4px;
+  background: var(--ai-input, #1e1e1e);
+  color: var(--ai-text, #ddd);
+}
