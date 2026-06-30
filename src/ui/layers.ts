@@ -43,230 +43,269 @@ function clearDropMarks(li: HTMLElement): void {
   li.classList.remove('drop-before', 'drop-after', 'drop-inside');
 }
 
-// Signature of everything the layer rows render EXCEPT selection. When it's
-// unchanged we can skip the full tree rebuild and just re-mark the selection.
-let lastLayersSig: string | null = null;
+// ---------------------------------------------------------------------------
+// Virtualized rendering.
+//
+// The panel is a tree, but huge documents (e.g. a matplotlib export where every
+// point is its own <g>) can have 100k+ rows. Rendering one <li> per shape builds
+// ~1.8M DOM nodes and takes ~14s. Instead we flatten the *visible* tree (honoring
+// collapse) into an array and render only the rows inside the scroll viewport,
+// using top/bottom padding on the <ul> to preserve the scrollbar geometry.
+// ---------------------------------------------------------------------------
 
-function layersSignature(shapes: ShapeData[]): string {
-  let s = '';
-  const walk = (list: ShapeData[], depth: number) => {
-    for (const sh of list) {
-      const collapsed = sh.element.getAttribute('data-collapsed') === 'true' ? '1' : '0';
-      const kids = sh.children?.length ?? 0;
-      s += `${depth}:${sh.id}:${sh.type}:${sh.name}:${sh.visible ? 1 : 0}:${sh.locked ? 1 : 0}:${collapsed}:${kids};`;
-      if (kids) walk(sh.children!, depth + 1);
+interface LayerRow { shape: ShapeData; depth: number }
+
+let vRows: LayerRow[] = [];      // flattened visible rows (cached between scrolls)
+let vRowH = 0;                   // measured row height (uniform); 0 until first render
+let curState: AppState | null = null;
+let listEl: HTMLElement | null = null;
+let scrollBound = false;
+let pendingFrame = 0;
+const BUFFER = 8;                // extra rows rendered above/below the viewport
+const DEFAULT_ROW_H = 24;        // used for the first render, before measuring
+
+/** Flatten the visible tree (collapsed groups hide their children) in render
+ *  order — within each level, last shape first, matching the canvas z-order. */
+function flattenVisible(list: ShapeData[], depth: number, out: LayerRow[]): void {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const sh = list[i];
+    out.push({ shape: sh, depth });
+    const isGroup = sh.type === 'group' && sh.children && sh.children.length > 0;
+    if (isGroup && sh.element.getAttribute('data-collapsed') !== 'true') {
+      flattenVisible(sh.children!, depth + 1, out);
     }
-  };
-  walk(shapes, 0);
-  return s;
+  }
 }
 
-/** Re-apply just the `.selected` class to existing rows (fast path). */
-function applyLayersSelection(list: HTMLElement, state: AppState): void {
-  const sel = new Set(state.selectedShapeIds);
-  if (state.selectedShapeId) sel.add(state.selectedShapeId);
-  list.querySelectorAll('li.layer-item').forEach((li) => {
-    const id = (li as HTMLElement).getAttribute('data-id');
-    li.classList.toggle('selected', !!id && sel.has(id));
+/** Re-query the live name element by id so rename works after re-renders. */
+function renameShape(id: string): void {
+  if (!listEl || !curState) return;
+  const nameEl = listEl.querySelector(`li[data-id="${CSS.escape(id)}"] .layer-name`) as HTMLElement | null;
+  const shape = curState.findShapeById(id);
+  if (!nameEl || !shape) return;
+  beginInlineRename(nameEl, shape.name, (newName) => {
+    shape.name = newName;
+    shape.element.setAttribute('data-name', newName);
+    curState!.onChange_public();
   });
 }
 
-export function updateLayersPanel(state: AppState): void {
-  const list = document.getElementById('layers-list')!;
+/** Render just the rows currently in the viewport (from cached vRows). */
+function renderWindow(): void {
+  if (!listEl || !curState) return;
+  const container = listEl.parentElement as HTMLElement | null;
+  const total = vRows.length;
+  const rowH = vRowH || DEFAULT_ROW_H;
+  const scrollTop = container?.scrollTop ?? 0;
+  const viewH = container?.clientHeight || 400;
 
-  // Fast path: structure unchanged (only selection could differ) → skip the
-  // full innerHTML rebuild, which otherwise scales with total shape count and
-  // fires on every move/select. Selection isn't part of the signature.
-  const sig = layersSignature(state.shapes);
-  if (sig === lastLayersSig && list.childElementCount > 0) {
-    applyLayersSelection(list, state);
-    return;
+  let start = Math.max(0, Math.floor(scrollTop / rowH) - BUFFER);
+  let end = Math.min(total, Math.ceil((scrollTop + viewH) / rowH) + BUFFER);
+  if (end < start) end = start;
+
+  listEl.style.paddingTop = `${Math.round(start * rowH)}px`;
+  listEl.style.paddingBottom = `${Math.round(Math.max(0, total - end) * rowH)}px`;
+
+  const frag = document.createDocumentFragment();
+  for (let i = start; i < end; i++) frag.appendChild(buildRow(vRows[i]));
+  listEl.replaceChildren(frag);
+
+  // Measure the real row height once, then re-window if our guess was off.
+  if (!vRowH) {
+    const first = listEl.firstElementChild as HTMLElement | null;
+    if (first && first.offsetHeight > 0) {
+      vRowH = first.offsetHeight;
+      if (Math.abs(vRowH - rowH) > 0.5) renderWindow();
+    }
   }
-  lastLayersSig = sig;
+}
 
-  list.innerHTML = '';
+/** Bind scroll + resize once, so scrolling re-windows without re-flattening. */
+function bindScroll(): void {
+  if (scrollBound || !listEl) return;
+  const container = listEl.parentElement;
+  if (!container) return;
+  const schedule = () => {
+    if (pendingFrame) return;
+    pendingFrame = requestAnimationFrame(() => { pendingFrame = 0; renderWindow(); });
+  };
+  container.addEventListener('scroll', schedule, { passive: true });
+  new ResizeObserver(schedule).observe(container); // panel expand / window resize
+  scrollBound = true;
+}
 
-  // Re-query the live name element by id so rename works even after re-renders.
-  const renameShape = (id: string) => {
-    const nameEl = list.querySelector(`li[data-id="${id}"] .layer-name`) as HTMLElement | null;
-    const shape = state.findShapeById(id);
-    if (!nameEl || !shape) return;
-    beginInlineRename(nameEl, shape.name, (newName) => {
-      shape.name = newName;
-      shape.element.setAttribute('data-name', newName);
+export function updateLayersPanel(state: AppState): void {
+  listEl = document.getElementById('layers-list');
+  if (!listEl) return;
+  curState = state;
+  vRows = [];
+  flattenVisible(state.shapes, 0, vRows);
+  bindScroll();
+  renderWindow();
+}
+
+/** Build one layer row (`<li>`); called only for rows in the viewport. */
+function buildRow(row: LayerRow): HTMLLIElement {
+  const state = curState!;
+  const list = listEl!;
+  const { shape, depth } = row;
+  const isGroup = shape.type === 'group' && shape.children && shape.children.length > 0;
+  const isCollapsed = shape.element.getAttribute('data-collapsed') === 'true';
+
+  const li = document.createElement('li');
+  li.className = 'layer-item';
+  if (depth > 0) li.classList.add('layer-child');
+  if (isGroup) li.classList.add('layer-group');
+  if (shape.id === state.selectedShapeId || state.selectedShapeIds.includes(shape.id)) {
+    li.classList.add('selected');
+  }
+  li.setAttribute('data-id', shape.id);
+  li.setAttribute('data-depth', String(depth));
+
+  // Visibility + lock toggles render FIRST, forming a fixed left column so
+  // they (and any future per-layer toggles) line up across every row. The
+  // disclosure arrow and tree indent sit to their right and never shift them.
+  const vis = document.createElement('span');
+  vis.className = 'layer-vis';
+  vis.innerHTML = shape.visible ? ICON_EYE : ICON_EYE_OFF;
+  vis.title = shape.visible ? 'Hide' : 'Show';
+  vis.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.toggleVisibility(shape.id);
+  });
+
+  // Lock toggle — show a faded open padlock when unlocked so it's clickable.
+  const lock = document.createElement('span');
+  lock.className = shape.locked ? 'layer-lock' : 'layer-lock unlocked';
+  lock.innerHTML = shape.locked ? ICON_LOCK : ICON_UNLOCK;
+  lock.title = shape.locked ? 'Unlock' : 'Lock';
+  lock.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.toggleLock(shape.id);
+  });
+
+  li.appendChild(vis);
+  li.appendChild(lock);
+
+  // Indent spacer — one per depth level (indents the disclosure/name, not the toggles)
+  if (depth > 0) {
+    const indent = document.createElement('span');
+    indent.className = 'layer-indent';
+    indent.style.width = `${depth * 14}px`;
+    indent.style.minWidth = `${depth * 14}px`;
+    // Draw tree guide lines
+    for (let d = 0; d < depth; d++) {
+      const guide = document.createElement('span');
+      guide.className = 'layer-indent-guide';
+      guide.style.left = `${d * 14 + 7}px`;
+      indent.appendChild(guide);
+    }
+    li.appendChild(indent);
+  }
+
+  // Expand/collapse toggle for groups
+  if (isGroup) {
+    const toggle = document.createElement('span');
+    toggle.className = 'layer-group-toggle';
+    toggle.innerHTML = isCollapsed ? '&#x25B6;' : '&#x25BC;';
+    toggle.title = isCollapsed ? 'Expand group' : 'Collapse group';
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      shape.element.setAttribute('data-collapsed', isCollapsed ? 'false' : 'true');
       state.onChange_public();
     });
-  };
+    li.appendChild(toggle);
+  } else if (depth > 0) {
+    // Tree branch connector for non-group children
+    const connector = document.createElement('span');
+    connector.className = 'layer-tree-connector';
+    li.appendChild(connector);
+  }
 
-  const renderShapes = (shapes: ShapeData[], depth: number) => {
-    for (let i = shapes.length - 1; i >= 0; i--) {
-      const shape = shapes[i];
-      const isGroup = shape.type === 'group' && shape.children && shape.children.length > 0;
-      const isCollapsed = shape.element.getAttribute('data-collapsed') === 'true';
+  // Icon
+  const icon = document.createElement('span');
+  icon.className = 'layer-icon';
+  icon.innerHTML = getShapeIcon(shape.type);
 
-      const li = document.createElement('li');
-      li.className = 'layer-item';
-      if (depth > 0) li.classList.add('layer-child');
-      if (isGroup) li.classList.add('layer-group');
-      if (shape.id === state.selectedShapeId || state.selectedShapeIds.includes(shape.id)) {
-        li.classList.add('selected');
-      }
-      li.setAttribute('data-id', shape.id);
-      li.setAttribute('data-depth', String(depth));
+  // Name
+  const name = document.createElement('span');
+  name.className = 'layer-name';
+  name.textContent = shape.name;
 
-      // Visibility + lock toggles render FIRST, forming a fixed left column so
-      // they (and any future per-layer toggles) line up across every row. The
-      // disclosure arrow and tree indent sit to their right and never shift them.
-      const vis = document.createElement('span');
-      vis.className = 'layer-vis';
-      vis.innerHTML = shape.visible ? ICON_EYE : ICON_EYE_OFF;
-      vis.title = shape.visible ? 'Hide' : 'Show';
-      vis.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.toggleVisibility(shape.id);
-      });
+  li.appendChild(icon);
+  li.appendChild(name);
 
-      // Lock toggle — show a faded open padlock when unlocked so it's clickable.
-      const lock = document.createElement('span');
-      lock.className = shape.locked ? 'layer-lock' : 'layer-lock unlocked';
-      lock.innerHTML = shape.locked ? ICON_LOCK : ICON_UNLOCK;
-      lock.title = shape.locked ? 'Unlock' : 'Lock';
-      lock.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.toggleLock(shape.id);
-      });
-
-      li.appendChild(vis);
-      li.appendChild(lock);
-
-      // Indent spacer — one per depth level (indents the disclosure/name, not the toggles)
-      if (depth > 0) {
-        const indent = document.createElement('span');
-        indent.className = 'layer-indent';
-        indent.style.width = `${depth * 14}px`;
-        indent.style.minWidth = `${depth * 14}px`;
-        // Draw tree guide lines
-        for (let d = 0; d < depth; d++) {
-          const guide = document.createElement('span');
-          guide.className = 'layer-indent-guide';
-          guide.style.left = `${d * 14 + 7}px`;
-          indent.appendChild(guide);
-        }
-        li.appendChild(indent);
-      }
-
-      // Expand/collapse toggle for groups
-      if (isGroup) {
-        const toggle = document.createElement('span');
-        toggle.className = 'layer-group-toggle';
-        toggle.innerHTML = isCollapsed ? '&#x25B6;' : '&#x25BC;';
-        toggle.title = isCollapsed ? 'Expand group' : 'Collapse group';
-        toggle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          shape.element.setAttribute('data-collapsed', isCollapsed ? 'false' : 'true');
-          state.onChange_public();
-        });
-        li.appendChild(toggle);
-      } else if (depth > 0) {
-        // Tree branch connector for non-group children
-        const connector = document.createElement('span');
-        connector.className = 'layer-tree-connector';
-        li.appendChild(connector);
-      }
-
-      // Icon
-      const icon = document.createElement('span');
-      icon.className = 'layer-icon';
-      icon.innerHTML = getShapeIcon(shape.type);
-
-      // Name
-      const name = document.createElement('span');
-      name.className = 'layer-name';
-      name.textContent = shape.name;
-
-      li.appendChild(icon);
-      li.appendChild(name);
-
-      // Click to select
-      li.addEventListener('click', (e) => {
-        state.activePanel = 'layers';
-        if (e.shiftKey) {
-          state.toggleMultiSelect(shape.id);
-        } else {
-          state.selectShape(shape.id);
-        }
-      });
-
-      // Click the name of an already-selected item to rename it (Finder-style).
-      name.addEventListener('click', (e) => {
-        const onlySelected = state.selectedShapeId === shape.id && state.selectedShapeIds.length <= 1;
-        if (onlySelected) {
-          e.stopPropagation();
-          renameShape(shape.id);
-        }
-      });
-
-      // Double-click to rename
-      li.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        renameShape(shape.id);
-      });
-
-      // Right-click context menu
-      li.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        state.activePanel = 'layers';
-        showContextMenu(e.clientX, e.clientY, [
-          { label: 'Rename', action: () => renameShape(shape.id) },
-          { label: 'Delete', danger: true, action: () => state.removeShape(shape.id) },
-        ]);
-      });
-
-      // Drag to reorder / reparent.
-      li.draggable = true;
-      li.addEventListener('dragstart', (e) => {
-        draggedId = shape.id;
-        e.dataTransfer!.effectAllowed = 'move';
-        e.dataTransfer!.setData('text/plain', shape.id);
-        li.classList.add('dragging');
-      });
-      li.addEventListener('dragend', () => {
-        draggedId = null;
-        list.querySelectorAll('.layer-item').forEach(el => {
-          el.classList.remove('dragging');
-          clearDropMarks(el as HTMLElement);
-        });
-      });
-      li.addEventListener('dragover', (e) => {
-        if (!draggedId || draggedId === shape.id) return;
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = 'move';
-        const zone = dropZone(e, li, shape.type === 'group');
-        clearDropMarks(li);
-        li.classList.add(dropMark(zone));
-      });
-      li.addEventListener('dragleave', () => clearDropMarks(li));
-      li.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const zone = dropZone(e, li, shape.type === 'group');
-        clearDropMarks(li);
-        if (draggedId && draggedId !== shape.id) {
-          if (zone === 'onto') state.groupShapes(draggedId, shape.id);
-          else state.moveShape(draggedId, shape.id, zone);
-        }
-        draggedId = null;
-      });
-
-      list.appendChild(li);
-
-      // Render children if group is expanded
-      if (isGroup && !isCollapsed) {
-        renderShapes(shape.children!, depth + 1);
-      }
+  // Click to select
+  li.addEventListener('click', (e) => {
+    state.activePanel = 'layers';
+    if (e.shiftKey) {
+      state.toggleMultiSelect(shape.id);
+    } else {
+      state.selectShape(shape.id);
     }
-  };
+  });
 
-  renderShapes(state.shapes, 0);
+  // Click the name of an already-selected item to rename it (Finder-style).
+  name.addEventListener('click', (e) => {
+    const onlySelected = state.selectedShapeId === shape.id && state.selectedShapeIds.length <= 1;
+    if (onlySelected) {
+      e.stopPropagation();
+      renameShape(shape.id);
+    }
+  });
+
+  // Double-click to rename
+  li.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    renameShape(shape.id);
+  });
+
+  // Right-click context menu
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    state.activePanel = 'layers';
+    showContextMenu(e.clientX, e.clientY, [
+      { label: 'Rename', action: () => renameShape(shape.id) },
+      { label: 'Delete', danger: true, action: () => state.removeShape(shape.id) },
+    ]);
+  });
+
+  // Drag to reorder / reparent.
+  li.draggable = true;
+  li.addEventListener('dragstart', (e) => {
+    draggedId = shape.id;
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', shape.id);
+    li.classList.add('dragging');
+  });
+  li.addEventListener('dragend', () => {
+    draggedId = null;
+    list.querySelectorAll('.layer-item').forEach(el => {
+      el.classList.remove('dragging');
+      clearDropMarks(el as HTMLElement);
+    });
+  });
+  li.addEventListener('dragover', (e) => {
+    if (!draggedId || draggedId === shape.id) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+    const zone = dropZone(e, li, shape.type === 'group');
+    clearDropMarks(li);
+    li.classList.add(dropMark(zone));
+  });
+  li.addEventListener('dragleave', () => clearDropMarks(li));
+  li.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const zone = dropZone(e, li, shape.type === 'group');
+    clearDropMarks(li);
+    if (draggedId && draggedId !== shape.id) {
+      if (zone === 'onto') state.groupShapes(draggedId, shape.id);
+      else state.moveShape(draggedId, shape.id, zone);
+    }
+    draggedId = null;
+  });
+
+  return li;
 }
 
 function getShapeIcon(type: string): string {
