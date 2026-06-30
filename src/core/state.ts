@@ -1867,17 +1867,15 @@ export class AppState {
     for (const s of this.symbols) parts.push(s.element.outerHTML);
     const defs = this.defsElement;
     if (defs) {
-      // Export user gradients/patterns only — never the editor's grid /
-      // transparency chrome that shares this <defs>.
+      // Export every def the document depends on (gradients, patterns, filters,
+      // clipPaths, masks, markers, referenced templates, …) so the saved file
+      // renders identically anywhere. Two exclusions: the editor's own grid /
+      // transparency chrome, and <symbol>s (already emitted from this.symbols
+      // above — they share these same DOM nodes, so re-emitting would duplicate).
       for (const child of Array.from(defs.children)) {
         if (EDITOR_DEF_IDS.has(child.id)) continue;
-        const tag = child.tagName.toLowerCase();
-        if (tag === 'lineargradient' || tag === 'radialgradient' || tag === 'pattern') {
-          parts.push(child.outerHTML);
-        } else if (tag === 'clippath' && child.id.startsWith(STROKE_CLIP_PREFIX)) {
-          // Emulated stroke-alignment clips — needed so the file renders elsewhere.
-          parts.push(child.outerHTML);
-        }
+        if (child.tagName.toLowerCase() === 'symbol') continue;
+        parts.push(child.outerHTML);
       }
     }
     return parts.join('\n');
@@ -1932,7 +1930,13 @@ export class AppState {
     this.symbolCounter = 0;
     this.gradCounter = 0;
     this.patternCounter = 0;
-    if (this.defsElement) this.defsElement.innerHTML = '';
+    // Remove imported/user defs but keep the editor's grid & transparency
+    // patterns, which live in this same <defs> and back the canvas chrome.
+    if (this.defsElement) {
+      for (const child of Array.from(this.defsElement.children)) {
+        if (!EDITOR_DEF_IDS.has(child.id)) child.remove();
+      }
+    }
   }
 
   private importDefsFromSVG(svgEl: Element): void {
@@ -1944,6 +1948,31 @@ export class AppState {
       // has it, so re-importing would duplicate it (and leak it on re-export).
       if (EDITOR_DEF_IDS.has(child.id)) continue;
       const tag = child.tagName.toLowerCase();
+
+      // Gradients and patterns get a tracked model (they're surfaced in the
+      // editor UI). Every other def type — filters, clipPaths, masks, markers,
+      // symbols, referenced template geometry — is copied verbatim below so the
+      // `url(#…)` / `xlink:href` references in the artwork resolve. Without this,
+      // layered SVGs (e.g. Inkscape glow/halo strokes built from <use> + filter)
+      // lose their entire appearance.
+      if (tag !== 'lineargradient' && tag !== 'radialgradient' && tag !== 'pattern') {
+        const imported = document.importNode(child, true) as SVGElement;
+        sanitizeSvgElement(imported);
+        this.ensureDefs().appendChild(imported);
+        // Track symbols so they appear in the Symbols panel and round-trip.
+        if (tag === 'symbol') {
+          const id = imported.id || `symbol-${++this.symbolCounter}`;
+          imported.id = id;
+          const m = id.match(/symbol-(\d+)/);
+          if (m) this.symbolCounter = Math.max(this.symbolCounter, parseInt(m[1]));
+          this.symbols.push({
+            id,
+            name: imported.getAttribute('data-name') || `Symbol ${id}`,
+            element: imported as unknown as SVGSymbolElement,
+          });
+        }
+        continue;
+      }
 
       if (tag === 'lineargradient' || tag === 'radialgradient') {
         const type = tag === 'lineargradient' ? 'linear' as const : 'radial' as const;
@@ -2003,72 +2032,54 @@ export class AppState {
     }
   }
 
+  /**
+   * Import a foreign SVG so it renders byte-for-byte the way a browser would.
+   *
+   * Rather than reconstruct the artwork from a whitelist of tags (which dropped
+   * `<use>`, filters, clipPaths, masks, markers, … and rewrote every id, breaking
+   * the internal `#…` references that drive layered Inkscape/Illustrator output),
+   * we faithfully clone the whole tree: every rendering element, every `<defs>`
+   * entry, and every original id are preserved so `url(#…)` / `xlink:href` refs
+   * still resolve. The editor model is then derived from the live DOM by
+   * {@link rebuildShapesFromDOM}, which already understands use/group/path/text/…;
+   * anything it doesn't model still renders, because the node stays in the DOM.
+   */
   importSVGContent(svgString: string): void {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(ensureSvgNamespaces(svgString), 'image/svg+xml');
+    const doc = new DOMParser().parseFromString(ensureSvgNamespaces(svgString), 'image/svg+xml');
     const svgEl = doc.querySelector('svg');
     if (!svgEl) return;
     this.drawingLayer.innerHTML = '';
     this.shapes = [];
 
-    // Import gradients and patterns from defs
+    // 1. Bring across the full <defs> (filters, clipPaths, masks, markers,
+    //    symbols, gradients, patterns, referenced templates) so every reference
+    //    in the artwork resolves once the content lands in the live document.
     this.importDefsFromSVG(svgEl);
 
-    const importElements = (parent: Element, targetParent: Element): ShapeData[] => {
-      const imported: ShapeData[] = [];
-      for (let i = 0; i < parent.children.length; i++) {
-        const child = parent.children[i];
-        const tag = child.tagName.toLowerCase();
-        if (['rect', 'ellipse', 'line', 'polyline', 'polygon', 'path', 'text', 'image'].includes(tag)) {
-          const importedEl = document.importNode(child, true) as SVGElement;
-          sanitizeSvgElement(importedEl); // strip event handlers / unsafe refs from imported SVG
-          const id = this.nextId();
-          importedEl.id = id;
-          // Strip degenerate subpaths (e.g. Inkscape's origin-anchored slivers
-          // that render as stray lines shooting off the artboard).
-          if (tag === 'path') {
-            const d = importedEl.getAttribute('d');
-            if (d) {
-              const { d: clean, removed } = sanitizePathData(d);
-              if (removed > 0) {
-                importedEl.setAttribute('d', clean);
-                console.info(`[import] removed ${removed} degenerate subpath(s) from ${id}`);
-              }
-            }
-          }
-          const type = this.detectType(importedEl);
-          if (!type) continue;
-          const name = `${type} ${id.replace('shape-', '#')}`;
-          importedEl.setAttribute('data-name', name);
-          targetParent.appendChild(importedEl);
-          imported.push({
-            id, type, element: importedEl, name,
-            style: this.readStyle(importedEl, type),
-            visible: true, locked: false,
-          });
-        } else if (tag === 'g') {
-          const gEl = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement;
-          const id = this.nextId();
-          gEl.id = id;
-          const name = `Group ${id.replace('shape-', '#')}`;
-          gEl.setAttribute('data-name', name);
-          // Copy transform attribute from source group
-          const transform = child.getAttribute('transform');
-          if (transform) gEl.setAttribute('transform', transform);
-          targetParent.appendChild(gEl);
-          const children = importElements(child, gEl);
-          children.forEach(c => c.parentId = id);
-          imported.push({
-            id, type: 'group', element: gEl, name,
-            style: this.readStyle(gEl, 'group'),
-            visible: true, locked: false,
-            children,
-          });
-        }
-      }
-      return imported;
-    };
-    this.shapes = importElements(svgEl, this.drawingLayer);
+    // 2. Faithfully clone each rendering child, ids and references intact.
+    //    Non-rendering containers/metadata are skipped (defs is handled above).
+    const NON_RENDERING = new Set(['defs', 'metadata', 'title', 'desc', 'namedview']);
+    for (const child of Array.from(svgEl.children)) {
+      if (NON_RENDERING.has(child.localName.toLowerCase())) continue;
+      this.drawingLayer.appendChild(document.importNode(child, true));
+    }
+
+    // 3. Security-sanitize the imported subtree in place (strips event handlers
+    //    and unsafe hrefs without disturbing geometry or internal references).
+    sanitizeSvgElement(this.drawingLayer);
+
+    // 4. Strip Inkscape's degenerate subpaths (anchors collapsed to a point with
+    //    control points flung to the origin) — invisible when filled but a stray
+    //    line when stroked. This is the one intentional deviation from raw input.
+    for (const pathEl of Array.from(this.drawingLayer.querySelectorAll('path'))) {
+      const d = pathEl.getAttribute('d');
+      if (!d) continue;
+      const { d: clean, removed } = sanitizePathData(d);
+      if (removed > 0) pathEl.setAttribute('d', clean);
+    }
+
+    // 5. Build the editor model from whatever was imported.
+    this.rebuildShapesFromDOM();
     this.selectedShapeIds = [];
     this.saveHistory();
     this.onChangeCallback();
