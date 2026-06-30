@@ -1,0 +1,15 @@
+# Cloudflare Pages security headers (production).
+#
+# The CSP here mirrors the production policy injected into index.html by
+# vite.config.ts (cspPlugin), but as a real HTTP response header it can also
+# carry directives a <meta> tag cannot — notably frame-ancestors (clickjacking
+# protection). If you change one, change the other so they stay in sync.
+#
+# Pin Supabase to your exact project ref (https://<ref>.supabase.co) instead of
+# the *.supabase.co wildcard once it's known, to further narrow the surface.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin

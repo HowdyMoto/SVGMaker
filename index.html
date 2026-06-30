@@ -12,8 +12,14 @@
     over wss) for account & cloud-sync features — scoped to Supabase's domain so
     a crafted file still can't beacon to an arbitrary host. Pin to your exact
     project ref (https://<ref>.supabase.co) once it's known to tighten further.
+
+    The meta tag below is INJECTED by vite.config.ts (cspPlugin) so the policy
+    can differ by mode: production drops Vite's HMR `ws:`/`wss:` wildcards and the
+    unused `blob:`/`data:` in connect-src, leaving only `self` + Supabase. The
+    production deploy ALSO sets the same policy as a real HTTP header via
+    public/_headers (which can add frame-ancestors / nosniff that meta can't).
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: blob: data: https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'" />
+  <!-- INJECT_CSP -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BuzzQuill</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -121,6 +127,10 @@
           <span class="menu-trigger">Help</span>
           <div class="menu-panel">
             <button data-action="app.command-palette">Command Palette...</button>
+            <div class="menu-divider"></div>
+            <button data-action="app.privacy">Privacy Policy</button>
+            <button data-action="app.terms">Terms of Service</button>
+            <button data-action="app.contact">Contact Us...</button>
             <div class="menu-divider"></div>
             <button data-action="app.about">About BuzzQuill...</button>
           </div>
