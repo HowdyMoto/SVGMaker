@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import type { AppState } from '../core/state';
 import type { ShapeData } from '../core/types';
 import { showGroupHint, hideGroupHint } from './group-hint';
@@ -31,7 +32,7 @@ function appendResizeHandles(parent: SVGElement, x: number, y: number, w: number
     rect.setAttribute('width', String(HANDLE_SIZE));
     rect.setAttribute('height', String(HANDLE_SIZE));
     rect.setAttribute('fill', 'white');
-    rect.setAttribute('stroke', '#20a0ff');
+    rect.setAttribute('stroke', tokens.selectionAccent);
     rect.setAttribute('stroke-width', '1');
     rect.setAttribute('data-handle', h2.id);
     rect.setAttribute('style', `cursor: ${HANDLE_CURSORS[h2.id]}`);
@@ -76,7 +77,7 @@ function appendRadiusHandles(parent: SVGElement, x: number, y: number, w: number
     dot.setAttribute('cy', String(c.cy));
     dot.setAttribute('r', '4');
     dot.setAttribute('fill', 'white');
-    dot.setAttribute('stroke', '#20a0ff');
+    dot.setAttribute('stroke', tokens.selectionAccent);
     dot.setAttribute('stroke-width', '1.5');
     dot.setAttribute('pointer-events', 'none');
     parent.appendChild(dot);
@@ -152,7 +153,7 @@ function drawActiveGroupOutline(state: AppState, selectionLayer: SVGGElement): v
     g.setAttribute('transform', `matrix(${m.a},${m.b},${m.c},${m.d},${m.e},${m.f})`);
   }
   appendRect(g, bbox.x, bbox.y, bbox.width, bbox.height, {
-    fill: 'none', stroke: '#20a0ff', strokeWidth: '1',
+    fill: 'none', stroke: tokens.selectionAccent, strokeWidth: '1',
     strokeDasharray: '3,3', opacity: '0.5', pointerEvents: 'none',
   });
   selectionLayer.appendChild(g);
@@ -188,7 +189,7 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
   }
 
   // Blue bounding rect
-  appendRect(overlayGroup, x, y, w, h, { fill: 'none', stroke: '#20a0ff', strokeWidth: '1', pointerEvents: 'none' });
+  appendRect(overlayGroup, x, y, w, h, { fill: 'none', stroke: tokens.selectionAccent, strokeWidth: '1', pointerEvents: 'none' });
 
   // Live corner-radius handles for rounded rectangles. Drawn before the resize
   // handles so the corner squares stay on top and win clicks right at the corner.
@@ -206,7 +207,7 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
   rotLine.setAttribute('y1', String(y));
   rotLine.setAttribute('x2', String(x + w / 2));
   rotLine.setAttribute('y2', String(y - rotOffset));
-  rotLine.setAttribute('stroke', '#20a0ff');
+  rotLine.setAttribute('stroke', tokens.selectionAccent);
   rotLine.setAttribute('stroke-width', '1');
   rotLine.setAttribute('pointer-events', 'none');
   overlayGroup.appendChild(rotLine);
@@ -216,7 +217,7 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
   rotCircle.setAttribute('cy', String(y - rotOffset));
   rotCircle.setAttribute('r', '5');
   rotCircle.setAttribute('fill', 'white');
-  rotCircle.setAttribute('stroke', '#20a0ff');
+  rotCircle.setAttribute('stroke', tokens.selectionAccent);
   rotCircle.setAttribute('stroke-width', '1.5');
   rotCircle.setAttribute('data-handle', 'rotate');
   rotCircle.setAttribute('style', 'cursor: crosshair');
@@ -236,7 +237,7 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
       dot.setAttribute('cy', String(c.y));
       dot.setAttribute('r', '2.5');
       dot.setAttribute('fill', 'white');
-      dot.setAttribute('stroke', '#20a0ff');
+      dot.setAttribute('stroke', tokens.selectionAccent);
       dot.setAttribute('stroke-width', '1');
       dot.setAttribute('pointer-events', 'none');
       overlayGroup.appendChild(dot);
@@ -267,7 +268,7 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
     if (transform) itemGroup.setAttribute('transform', transform);
     appendRect(itemGroup, bbox.x, bbox.y, bbox.width, bbox.height, {
       fill: 'none',
-      stroke: '#20a0ff',
+      stroke: tokens.selectionAccent,
       strokeWidth: '1',
       pointerEvents: 'none',
       opacity: '0.5',
@@ -309,7 +310,7 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
   // Combined bounding rect (solid)
   appendRect(selectionLayer, minX, minY, cw, ch, {
     fill: 'none',
-    stroke: '#20a0ff',
+    stroke: tokens.selectionAccent,
     strokeWidth: '1',
     pointerEvents: 'none',
     strokeDasharray: '4,2',
@@ -324,7 +325,7 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
   rotLine.setAttribute('y1', String(minY));
   rotLine.setAttribute('x2', String(minX + cw / 2));
   rotLine.setAttribute('y2', String(minY - rotOffset));
-  rotLine.setAttribute('stroke', '#20a0ff');
+  rotLine.setAttribute('stroke', tokens.selectionAccent);
   rotLine.setAttribute('stroke-width', '1');
   rotLine.setAttribute('pointer-events', 'none');
   selectionLayer.appendChild(rotLine);
@@ -334,7 +335,7 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
   rotCircle.setAttribute('cy', String(minY - rotOffset));
   rotCircle.setAttribute('r', '5');
   rotCircle.setAttribute('fill', 'white');
-  rotCircle.setAttribute('stroke', '#20a0ff');
+  rotCircle.setAttribute('stroke', tokens.selectionAccent);
   rotCircle.setAttribute('stroke-width', '1.5');
   rotCircle.setAttribute('data-handle', 'rotate');
   rotCircle.setAttribute('style', 'cursor: crosshair');
@@ -344,7 +345,7 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
   const badge = document.createElementNS(NS, 'text');
   badge.setAttribute('x', String(maxX + 8));
   badge.setAttribute('y', String(minY + 12));
-  badge.setAttribute('fill', '#20a0ff');
+  badge.setAttribute('fill', tokens.selectionAccent);
   badge.setAttribute('font-size', '11');
   badge.setAttribute('font-family', 'Arial, sans-serif');
   badge.setAttribute('pointer-events', 'none');

@@ -4,6 +4,7 @@ import { bakeLayerContent } from '../core/bake';
 import { SVG_NS_DECLS } from '../core/svg-ns';
 import { outlineText, buildEmbeddedFontStyle } from '../core/text-outline';
 import { supportsFileSystemAccess, saveFilePicker, writeHandle, downloadFile } from '../core/file-access';
+import { openModal } from './modal';
 
 type TextMode = 'keep' | 'outline' | 'embed';
 
@@ -34,32 +35,20 @@ export async function exportArtboardToFile(state: AppState, ab: Artboard): Promi
  * Shows a modal dialog to export all artboards (or a selection) in SVG/PNG/JPG.
  */
 export function showExportDialog(state: AppState): void {
-  // Remove existing dialog if any
-  document.getElementById('export-dialog-overlay')?.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'export-dialog-overlay';
-  overlay.style.cssText = `
-    position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999;
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Segoe UI',sans-serif; font-size:12px; color:#ccc;
-  `;
-
-  const dialog = document.createElement('div');
-  dialog.style.cssText = `
-    background:#3c3c3c; border:1px solid #555; border-radius:6px;
-    width:420px; max-height:80vh; overflow:auto; box-shadow:0 8px 32px rgba(0,0,0,0.5);
-  `;
+  // Overlay, Escape/click-outside dismissal, focus handling and the \u2715 button
+  // all come from the shared Modal primitive (ui/modal.ts).
+  const modal = openModal({
+    id: 'export-dialog-overlay',
+    ariaLabel: 'Export Artboards',
+    dialogClass: 'export-dialog',
+  });
+  if (!modal) return; // already open
+  const { dialog, close } = modal;
 
   // Header
   const header = document.createElement('div');
-  header.style.cssText = 'padding:14px 18px 10px; border-bottom:1px solid #2a2a2a; display:flex; justify-content:space-between; align-items:center;';
+  header.style.cssText = 'padding:14px 18px 10px; border-bottom:1px solid #2a2a2a;';
   header.innerHTML = '<span style="font-size:14px; font-weight:600; color:#eee;">Export Artboards</span>';
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '\u2715';
-  closeBtn.style.cssText = 'background:none; border:none; color:#999; font-size:16px; cursor:pointer; padding:0 4px;';
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
   dialog.appendChild(header);
 
   // Body
@@ -184,7 +173,7 @@ export function showExportDialog(state: AppState): void {
   const cancelBtn = document.createElement('button');
   cancelBtn.textContent = 'Cancel';
   cancelBtn.style.cssText = 'background:#4a4a4a; border:1px solid #555; border-radius:3px; color:#ccc; padding:6px 16px; cursor:pointer;';
-  cancelBtn.addEventListener('click', () => overlay.remove());
+  cancelBtn.addEventListener('click', () => close());
 
   const exportBtn = document.createElement('button');
   exportBtn.textContent = 'Export';
@@ -207,19 +196,12 @@ export function showExportDialog(state: AppState): void {
       alert('Export failed: ' + (err instanceof Error ? err.message : err));
     }
 
-    overlay.remove();
+    close();
   });
 
   footer.appendChild(cancelBtn);
   footer.appendChild(exportBtn);
   dialog.appendChild(footer);
-
-  overlay.appendChild(dialog);
-  overlay.addEventListener('mousedown', (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-
-  document.body.appendChild(overlay);
 }
 
 async function exportArtboards(

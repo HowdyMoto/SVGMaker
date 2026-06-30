@@ -1,3 +1,4 @@
+import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
 import type { AnchorRef, HandleHit } from '../core/path-edit';
@@ -270,7 +271,7 @@ export class NodeEditTool extends BaseTool {
     const rect = document.createElementNS(this.NS, 'rect') as SVGRectElement;
     rect.id = 'marquee-rect';
     rect.setAttribute('fill', 'rgba(32, 160, 255, 0.08)');
-    rect.setAttribute('stroke', '#20a0ff');
+    rect.setAttribute('stroke', tokens.selectionAccent);
     rect.setAttribute('stroke-width', '1');
     rect.setAttribute('vector-effect', 'non-scaling-stroke');
     rect.setAttribute('stroke-dasharray', '4,3');

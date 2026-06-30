@@ -1,3 +1,4 @@
+import { tokens } from './tokens';
 import type { AppState } from '../core/state';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -72,7 +73,7 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
     border.setAttribute('width', String(ab.width));
     border.setAttribute('height', String(ab.height));
     border.setAttribute('fill', 'none');
-    border.setAttribute('stroke', isSelected ? '#20a0ff' : (isActive ? '#333' : '#666'));
+    border.setAttribute('stroke', isSelected ? tokens.selectionAccent : (isActive ? '#333' : '#666'));
     border.setAttribute('stroke-width', isSelected ? '2' : '0.5');
     border.setAttribute('pointer-events', 'none');
     abLayer.appendChild(border);
@@ -121,7 +122,7 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
         rect.setAttribute('width', String(handleSize));
         rect.setAttribute('height', String(handleSize));
         rect.setAttribute('fill', 'white');
-        rect.setAttribute('stroke', '#20a0ff');
+        rect.setAttribute('stroke', tokens.selectionAccent);
         rect.setAttribute('stroke-width', '1');
         rect.setAttribute('data-ab-handle', h.id);
         rect.setAttribute('data-ab-id', ab.id);

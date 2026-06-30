@@ -1,7 +1,8 @@
+import { tokens } from './tokens';
 import type { AppState } from '../core/state';
 
 const NS = 'http://www.w3.org/2000/svg';
-const ACCENT = '#20a0ff';
+const ACCENT = tokens.selectionAccent;
 
 /**
  * Render the node-editing overlay (anchors + handles for the path being edited)
