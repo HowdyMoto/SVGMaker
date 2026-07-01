@@ -10,8 +10,10 @@ import { SymbolRegistry, type SymbolHost } from './symbol-registry';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
-  type BooleanOp, ensureBooleanEngine, booleanEngineReady, computeBoolean, elementPathData,
+  type BooleanOp, type StrokeJoin, type StrokeCap,
+  ensureBooleanEngine, booleanEngineReady, computeBoolean, elementPathData,
   stripBooleanOperands, localPathData,
+  ensureOffsetEngine, offsetPathData, outlineStrokeData,
 } from './boolean';
 
 /**
@@ -1547,6 +1549,112 @@ export class AppState {
     el.replaceWith(path);
     shape.element = path;
     shape.type = 'path';
+    return true;
+  }
+
+  // ---- Outline Stroke / Offset Path (paperjs-offset via the boolean engine) ----
+
+  private static readonly PATHABLE: ReadonlyArray<ShapeData['type']> =
+    ['path', 'rect', 'ellipse', 'line', 'polyline', 'polygon'];
+
+  /**
+   * Convert the stroke of each selected stroked object into a filled outline path
+   * (Illustrator's Object → Path → Outline Stroke). If the object also has a fill,
+   * the fill body is kept and the outline is added above it in a group; a fill-less
+   * shape is replaced outright. Returns false if nothing had an outline-able stroke.
+   */
+  async outlineSelectedStroke(): Promise<boolean> {
+    const targets = this.selectedShapeIds
+      .map(id => this.findShapeById(id))
+      .filter((s): s is ShapeData => !!s && AppState.PATHABLE.includes(s.type))
+      .filter(s => {
+        const stroke = s.element.getAttribute('stroke');
+        const w = parseFloat(s.element.getAttribute('stroke-width') ?? '0');
+        return !!stroke && stroke !== 'none' && w > 0;
+      });
+    if (targets.length === 0) return false;
+
+    await ensureOffsetEngine();
+    const resultIds: string[] = [];
+    for (const s of targets) {
+      const id = this.outlineOneStroke(s);
+      if (id) resultIds.push(id);
+    }
+    this.rebuildShapesFromDOM();
+    if (resultIds.length) this.selectedShapeIds = resultIds;
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
+  /** Outline one shape's stroke; returns the id of the resulting top-level element. */
+  private outlineOneStroke(shape: ShapeData): string | null {
+    const el = shape.element;
+    const localD = shape.type === 'path' ? (el.getAttribute('d') ?? '') : localPathData(el);
+    if (!localD.trim()) return null;
+    const align = el.getAttribute('data-stroke-align');
+    let width = parseFloat(el.getAttribute('stroke-width') ?? '1');
+    if (align === 'inside' || align === 'outside') width /= 2; // recover authored width
+    const rawJoin = el.getAttribute('stroke-linejoin');
+    const join: StrokeJoin = rawJoin === 'round' || rawJoin === 'bevel' ? rawJoin : 'miter';
+    const cap: StrokeCap = el.getAttribute('stroke-linecap') === 'round' ? 'round' : 'butt';
+    const outlineD = outlineStrokeData(localD, width, join, cap);
+    if (!outlineD.trim()) return null;
+
+    const SVG = 'http://www.w3.org/2000/svg';
+    const outline = document.createElementNS(SVG, 'path');
+    outline.setAttribute('d', outlineD);
+    outline.setAttribute('fill', el.getAttribute('stroke') ?? '#000000');
+    outline.setAttribute('fill-rule', 'nonzero');
+    const so = el.getAttribute('stroke-opacity'); if (so) outline.setAttribute('fill-opacity', so);
+    const tf = el.getAttribute('transform'); if (tf) outline.setAttribute('transform', tf);
+
+    const fill = el.getAttribute('fill');
+    if (!fill || fill === 'none') {
+      // No fill body: the outline simply replaces the shape.
+      outline.id = shape.id;
+      const name = el.getAttribute('data-name'); if (name) outline.setAttribute('data-name', name);
+      el.replaceWith(outline);
+      return shape.id;
+    }
+    // Keep the fill body (minus its stroke), group it under the outline.
+    for (const a of ['stroke', 'stroke-width', 'stroke-linejoin', 'stroke-linecap', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-opacity', 'data-stroke-align', 'clip-path']) {
+      el.removeAttribute(a);
+    }
+    const g = document.createElementNS(SVG, 'g');
+    const gid = this.nextId();
+    g.id = gid;
+    g.setAttribute('data-name', 'Outlined Stroke');
+    outline.id = this.nextId();
+    el.replaceWith(g);
+    g.appendChild(el);
+    g.appendChild(outline);
+    return gid;
+  }
+
+  /**
+   * Offset every selected path outward (positive) or inward (negative) by `delta`,
+   * in place, preserving curves (Illustrator's Object → Path → Offset Path).
+   * Primitives are converted to paths first. Returns false if nothing changed.
+   */
+  async offsetSelectedPath(delta: number): Promise<boolean> {
+    if (!delta) return false;
+    const shapes = this.selectedShapeIds
+      .map(id => this.findShapeById(id))
+      .filter((s): s is ShapeData => !!s && AppState.PATHABLE.includes(s.type));
+    if (shapes.length === 0) return false;
+
+    await ensureOffsetEngine();
+    let changed = false;
+    for (const s of shapes) {
+      if (s.type !== 'path' && !this.convertShapeToPath(s)) continue;
+      const d = s.element.getAttribute('d') ?? '';
+      const out = offsetPathData(d, delta, 'miter');
+      if (out.trim()) { s.element.setAttribute('d', out); changed = true; }
+    }
+    if (!changed) return false;
+    this.saveHistory();
+    this.onChangeCallback();
     return true;
   }
 

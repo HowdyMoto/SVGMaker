@@ -57,6 +57,16 @@ function cspPlugin(isDev: boolean): Plugin {
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [cspPlugin(mode === 'development')],
+  resolve: {
+    alias: {
+      // Force every `import 'paper'` (ours + paperjs-offset's) to the CORE build.
+      // paper-full bundles PaperScript's parser, which calls `new Function()` at
+      // load and is blocked by our CSP (script-src 'self'). Aliasing here also
+      // guarantees a single shared paper instance across the app + the offset
+      // plugin (two instances break geometry ops).
+      paper: 'paper/dist/paper-core.js',
+    },
+  },
   // Surface the package version to the app (shown in the About dialog).
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
