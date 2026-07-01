@@ -12,6 +12,7 @@ import { isAuthConfigured } from '../lib/supabase';
 import { signInWith, signOut, onAuthChange, displayName, type OAuthProvider } from '../lib/auth';
 import { googleLogo, discordLogo, cloudUploadIcon } from './brand-icons';
 import { showLegalDialog } from './legal';
+import { openModal } from './modal';
 
 /** Last known user, kept in sync via onAuthChange. Drives command enablement. */
 let currentUser: User | null = null;
@@ -143,28 +144,21 @@ function openAccountPopover(anchor: HTMLElement, btn: HTMLElement): void {
 }
 
 /**
- * The sign-in modal. Mirrors showAboutDialog(): own overlay, Escape to close,
- * capture-phase key handling so canvas shortcuts can't fire behind it.
+ * The sign-in modal. Overlay lifecycle (Escape / click-outside / focus /
+ * singleton / stacking under the legal dialog) is handled by the shared Modal
+ * primitive (ui/modal.ts).
  */
 export function showSignInDialog(): void {
   if (!isAuthConfigured) return;
-  if (document.getElementById('signin-overlay')) return; // singleton
+  const modal = openModal({
+    id: 'signin-overlay',
+    ariaLabel: 'Sign in to BuzzQuill',
+    dialogClass: 'about-dialog signin-dialog',
+  });
+  if (!modal) return; // singleton already open
+  const { dialog } = modal;
 
-  const prevFocus = document.activeElement as HTMLElement | null;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'signin-overlay';
-  overlay.className = 'about-overlay'; // reuse the dimmed full-screen backdrop
-
-  const dialog = document.createElement('div');
-  dialog.className = 'about-dialog signin-dialog';
-  dialog.tabIndex = -1; // focus target on open — avoids a stray ring on a button
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Sign in to BuzzQuill');
-
-  dialog.innerHTML = `
-    <button class="about-close" aria-label="Close">✕</button>
+  dialog.insertAdjacentHTML('beforeend', `
     <h1 class="about-title">Welcome to BuzzQuill</h1>
     <p class="about-tagline">Sign in to save your work and sync projects across devices.</p>
     <div class="signin-providers">
@@ -183,26 +177,7 @@ export function showSignInDialog(): void {
     <p class="signin-fineprint">By continuing, you agree to our
       <button type="button" class="signin-link" data-legal="terms">Terms</button> and
       <button type="button" class="signin-link" data-legal="privacy">Privacy Policy</button>.</p>
-  `;
-
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-
-  const close = (): void => {
-    document.removeEventListener('keydown', onKey, true);
-    overlay.remove();
-    prevFocus?.focus?.();
-  };
-
-  const onKey = (e: KeyboardEvent): void => {
-    if (document.getElementById('legal-overlay')) return; // the legal dialog (stacked on top) owns keys
-    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-    e.stopPropagation(); // swallow canvas shortcuts while the modal is up
-  };
-  document.addEventListener('keydown', onKey, true);
-
-  dialog.querySelector('.about-close')!.addEventListener('click', close);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  `);
 
   // Terms / Privacy links open the legal modal stacked above this one.
   dialog.querySelectorAll<HTMLButtonElement>('.signin-link').forEach((link) =>
@@ -230,6 +205,4 @@ export function showSignInDialog(): void {
       }
     });
   });
-
-  dialog.focus({ preventScroll: true });
 }

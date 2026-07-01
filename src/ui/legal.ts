@@ -7,6 +7,7 @@
 // product matures. Not legal advice; a simple, honest starting point.
 // ---------------------------------------------------------------------------
 
+import { openModal } from './modal';
 import { showContactDialog } from './contact-dialog';
 
 const EFFECTIVE = 'June 30, 2026';
@@ -61,25 +62,19 @@ const TERMS = `
   Questions? Reach us through our ${CONTACT_LINK}.</p>
 `;
 
-/** Open the legal modal, scrolled to the requested section. */
+/** Open the legal modal, scrolled to the requested section. Overlay lifecycle
+ *  (Escape / click-outside / focus / singleton / stacking under the contact
+ *  dialog) is all handled by the shared Modal primitive. */
 export function showLegalDialog(section: 'privacy' | 'terms' = 'privacy'): void {
-  if (document.getElementById('legal-overlay')) return; // singleton
+  const modal = openModal({
+    id: 'legal-overlay',
+    ariaLabel: 'Privacy Policy and Terms of Service',
+    dialogClass: 'legal-dialog',
+  });
+  if (!modal) return; // singleton already open
+  const { dialog } = modal;
 
-  const prevFocus = document.activeElement as HTMLElement | null;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'legal-overlay';
-  overlay.className = 'about-overlay'; // reuse the dimmed full-screen backdrop
-
-  const dialog = document.createElement('div');
-  dialog.className = 'about-dialog legal-dialog';
-  dialog.tabIndex = -1;
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Privacy Policy and Terms of Service');
-
-  dialog.innerHTML = `
-    <button class="about-close" aria-label="Close">✕</button>
+  dialog.insertAdjacentHTML('beforeend', `
     <h1 class="about-title legal-heading">Privacy &amp; Terms</h1>
     <nav class="legal-tabs">
       <button type="button" class="legal-tab" data-goto="privacy">Privacy Policy</button>
@@ -89,10 +84,7 @@ export function showLegalDialog(section: 'privacy' | 'terms' = 'privacy'): void 
       <section id="legal-privacy">${PRIVACY}</section>
       <section id="legal-terms">${TERMS}</section>
     </div>
-  `;
-
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
+  `);
 
   const body = dialog.querySelector('.legal-body') as HTMLElement;
   const goTo = (which: string): void => {
@@ -102,29 +94,9 @@ export function showLegalDialog(section: 'privacy' | 'terms' = 'privacy'): void 
   dialog.querySelectorAll<HTMLButtonElement>('.legal-tab').forEach((tab) =>
     tab.addEventListener('click', () => goTo(tab.dataset.goto!)));
 
-  const close = (): void => {
-    document.removeEventListener('keydown', onKey, true);
-    overlay.remove();
-    prevFocus?.focus?.();
-  };
-
-  // Capture phase so this pre-empts canvas shortcuts (and any modal underneath,
-  // e.g. the sign-in dialog, which yields to us while #legal-overlay exists). We
-  // in turn yield to the contact dialog when it's stacked on top of us.
-  const onKey = (e: KeyboardEvent): void => {
-    if (document.getElementById('contact-overlay')) return;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
-    e.stopPropagation();
-  };
-  document.addEventListener('keydown', onKey, true);
-
-  dialog.querySelector('.about-close')!.addEventListener('click', close);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
-
   // "contact form" links inside the policy text open the contact modal on top.
   dialog.querySelectorAll('.legal-contact-link').forEach((link) =>
     link.addEventListener('click', () => showContactDialog()));
 
-  dialog.focus({ preventScroll: true });
   goTo(section);
 }

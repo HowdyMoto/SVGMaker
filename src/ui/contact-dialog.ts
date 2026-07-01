@@ -6,26 +6,22 @@
 // exposed in the app. Includes a honeypot field for basic bot filtering.
 // ---------------------------------------------------------------------------
 
+import { openModal } from './modal';
 import { submitContactMessage } from '../lib/contact';
 import { isAuthConfigured } from '../lib/supabase';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function showContactDialog(): void {
-  if (document.getElementById('contact-overlay')) return; // singleton
-
-  const prevFocus = document.activeElement as HTMLElement | null;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'contact-overlay';
-  overlay.className = 'about-overlay';
-
-  const dialog = document.createElement('div');
-  dialog.className = 'about-dialog contact-dialog';
-  dialog.tabIndex = -1;
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Contact us');
+  // Overlay lifecycle (Escape / click-outside / focus / singleton / stacking on
+  // top of the legal dialog) comes from the shared Modal primitive.
+  const modal = openModal({
+    id: 'contact-overlay',
+    ariaLabel: 'Contact us',
+    dialogClass: 'about-dialog contact-dialog',
+  });
+  if (!modal) return; // singleton already open
+  const { dialog } = modal;
 
   const formMarkup = `
     <form class="contact-form" novalidate>
@@ -44,30 +40,11 @@ export function showContactDialog(): void {
 
   const unavailable = `<p class="contact-unavailable">The contact form isn't available in this build. Please try again from the live app.</p>`;
 
-  dialog.innerHTML = `
-    <button class="about-close" aria-label="Close">✕</button>
+  dialog.insertAdjacentHTML('beforeend', `
     <h1 class="about-title">Contact us</h1>
     <p class="about-tagline">Questions, bugs, or feedback? Send us a note.</p>
     ${isAuthConfigured ? formMarkup : unavailable}
-  `;
-
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-
-  const close = (): void => {
-    document.removeEventListener('keydown', onKey, true);
-    overlay.remove();
-    prevFocus?.focus?.();
-  };
-
-  const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
-    e.stopPropagation();
-  };
-  document.addEventListener('keydown', onKey, true);
-
-  dialog.querySelector('.about-close')!.addEventListener('click', close);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  `);
 
   const form = dialog.querySelector('.contact-form') as HTMLFormElement | null;
   if (form) {
@@ -110,8 +87,7 @@ export function showContactDialog(): void {
       }
     });
 
+    // Focus the first field (openModal already focused the dialog itself).
     (form.querySelector('[name="email"]') as HTMLInputElement).focus({ preventScroll: true });
-  } else {
-    dialog.focus({ preventScroll: true });
   }
 }

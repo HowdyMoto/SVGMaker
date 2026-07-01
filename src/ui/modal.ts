@@ -68,9 +68,20 @@ export function openModal(opts: ModalOptions): ModalHandle | null {
   // Capture phase so this pre-empts the global shortcut handler in main.ts:
   // stray/destructive keys (a tool key, Delete on a shape behind the modal) must
   // not fire while the dialog is up. Escape closes; everything else is swallowed.
+  //
+  // Stacking: modals append in order, so the LAST `.modal-overlay` in the DOM is
+  // the topmost. Only it closes on Escape — a modal opened over another (e.g. the
+  // contact dialog over the legal dialog) is dismissed first and the one beneath
+  // stays put, with no per-dialog "yield" logic.
+  const isTopmost = (): boolean => {
+    const all = document.querySelectorAll('.modal-overlay');
+    return all[all.length - 1] === overlay;
+  };
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
+      if (!isTopmost()) return; // a modal stacked above us owns Escape
       e.preventDefault();
+      e.stopImmediatePropagation();
       close();
       return;
     }
@@ -94,7 +105,7 @@ export function openModal(opts: ModalOptions): ModalHandle | null {
 
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  dialog.focus();
+  dialog.focus({ preventScroll: true });
 
   return { overlay, dialog, close };
 }
