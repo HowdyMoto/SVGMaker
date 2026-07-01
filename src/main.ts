@@ -29,6 +29,7 @@ import { setupMenus } from './ui/menus';
 import { drawRulers } from './ui/rulers';
 import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
+import { setupTooltips } from './ui/tooltip';
 import { setupPathfinder, updatePathfinderPanel, updatePathfinderPopover } from './ui/pathfinder';
 import { renderArtboards } from './ui/artboard-renderer';
 import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
@@ -321,6 +322,7 @@ setupArtboardProps(state);
 setupColorPicker(state);
 setupAlign(state);
 setupPathfinder(state);
+setupTooltips();
 // Dev-only debug handle (stripped from production builds).
 if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = state;
 setupSymbolButtons(commandCtx);

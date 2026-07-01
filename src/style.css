@@ -30,11 +30,13 @@
   --ai-danger:       #f44336;
 
   --toolbar-w: 40px;
+  --left-panel-w: 240px;
   --ruler-size: 20px;
   --panel-w: 260px;
   --menubar-h: 24px;
   --controlbar-h: 32px;
   --statusbar-h: 22px;
+  --tabbar-h: 34px;
 
   /* Stacking ladder — overlay layers ordered in one place rather than as
    * scattered magic numbers. Values unchanged from the originals they replaced,
@@ -905,30 +907,48 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* ============ WORKSPACE ============ */
 #workspace {
   flex: 1;
+  position: relative; /* anchor for the floating toolbar */
   display: grid;
-  grid-template-columns: var(--toolbar-w) var(--ruler-size) 1fr var(--panel-w);
+  grid-template-columns: var(--left-panel-w) var(--ruler-size) 1fr var(--panel-w);
   grid-template-rows: var(--ruler-size) 1fr;
   overflow: hidden;
 }
 
-/* ============ TOOLBAR ============ */
-#toolbar {
+/* ============ LEFT PANEL (Layers) ============ */
+#left-panel {
   grid-column: 1;
   grid-row: 1 / -1;
-  background: var(--ai-panel);
+  background: var(--ai-panel-darker);
   border-right: 1px solid var(--ai-border);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: 8px;
+}
+
+/* ============ TOOLBAR (Figma-style: floating, bottom-center) ============ */
+#toolbar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-hud);
+  background: var(--ai-panel);
+  border: 1px solid var(--ai-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  padding: 4px 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  flex-shrink: 0;
+  gap: 2px;
+  padding: 5px 8px;
+  max-width: calc(100vw - 40px);
+  overflow-x: auto;
 }
 
 .tool-section {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 1px;
 }
@@ -975,23 +995,71 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 
 .tool-divider {
-  width: 24px;
-  height: 1px;
+  width: 1px;
+  height: 22px;
   background: var(--ai-border-light);
-  margin: 3px 0;
+  margin: 0 3px;
 }
 
 .tool-spacer {
-  flex: 1;
+  display: none; /* not needed in the horizontal floating bar */
 }
 
-/* Toolbar fill/stroke swatches */
+/* Toolbar fill/stroke swatches (right end of the floating bar) */
 .toolbar-swatches {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 0;
+  padding: 0 2px 0 4px;
 }
+
+/* ============ DOCUMENT TAB BAR ============ */
+#tab-bar {
+  display: flex;
+  align-items: stretch;
+  height: var(--tabbar-h);
+  min-height: var(--tabbar-h);
+  background: var(--ai-panel-darker);
+  border-bottom: 1px solid var(--ai-border);
+  padding: 0 4px;
+  gap: 2px;
+  overflow-x: auto;
+}
+#tab-list { display: flex; align-items: stretch; gap: 2px; }
+.doc-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  max-width: 200px;
+  font-size: 12px;
+  color: var(--ai-text-dim);
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-tab:hover { background: var(--ai-btn-hover); color: var(--ai-text); }
+.doc-tab.active {
+  color: var(--ai-text);
+  background: var(--ai-panel);
+  border-top-color: var(--ai-accent, #2d7ff9);
+}
+.doc-tab .doc-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.doc-tab .doc-tab-dirty { color: var(--ai-accent, #2d7ff9); font-size: 14px; line-height: 1; }
+.doc-tab .doc-tab-close {
+  border: none; background: transparent; color: inherit; cursor: pointer;
+  border-radius: 3px; width: 16px; height: 16px; line-height: 1; opacity: 0.6;
+}
+.doc-tab .doc-tab-close:hover { opacity: 1; background: var(--ai-btn); }
+#tab-new {
+  align-self: center;
+  width: 24px; height: 24px; margin-left: 2px;
+  border: none; background: transparent; color: var(--ai-text-dim);
+  border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1;
+}
+#tab-new:hover { background: var(--ai-btn-hover); color: var(--ai-text); }
 
 .swatch-stack {
   position: relative;
@@ -2620,3 +2688,21 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
   background: transparent; color: var(--ai-text, #ddd); border: 1px solid var(--ai-border, #4a4a4a);
 }
 .offset-btn-primary { background: #2d7ff9; border-color: #2d7ff9; color: #fff; }
+
+/* Custom tooltips (ui/tooltip.ts) */
+.tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 260px;
+  padding: 5px 9px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #fff;
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  pointer-events: none;
+  white-space: normal;
+}
+.tooltip[hidden] { display: none; }

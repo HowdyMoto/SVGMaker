@@ -148,6 +148,12 @@
       <span id="project-name" class="project-name" title="Current project file">Untitled</span>
     </header>
 
+    <!-- Document tabs (Figma-style). Populated by ui/tab-bar.ts. -->
+    <div id="tab-bar">
+      <div id="tab-list"></div>
+      <button id="tab-new" title="New document" aria-label="New document">&#x2b;</button>
+    </div>
+
     <!-- Control/Options Bar -->
     <div id="control-bar">
       <div id="control-bar-content">
@@ -178,7 +184,27 @@
     </div>
 
     <div id="workspace">
-      <!-- Left Toolbar (Illustrator-style double column) -->
+      <!-- Left panel (Figma-style): Layers, full height -->
+      <aside id="left-panel">
+        <div class="panel" id="panel-layers">
+          <div class="panel-header" data-panel="layers">
+            <span>Layers</span>
+            <button class="panel-add" id="btn-layer-add" title="New Layer (empty group)">&#x2b;</button>
+            <button class="panel-collapse">&#x25BC;</button>
+          </div>
+          <div class="panel-body panel-body-layers">
+            <ul id="layers-list"></ul>
+          </div>
+          <div class="panel-footer">
+            <button id="btn-layer-up" title="Move Up">&#x2191;</button>
+            <button id="btn-layer-down" title="Move Down">&#x2193;</button>
+            <button id="btn-layer-duplicate" title="Duplicate">&#x2398;</button>
+            <button id="btn-layer-delete" title="Delete">&#x1F5D1;</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Tool bar (Figma-style): floating along the bottom -->
       <aside id="toolbar">
         <div class="tool-section">
           <button class="tool-btn active" data-tool="select" title="Selection Tool (V)">
@@ -693,24 +719,6 @@
           </div>
           <div class="panel-footer">
             <button id="btn-ab-export-all" title="Export all artboards with options">&#x2913; Export All...</button>
-          </div>
-        </div>
-
-        <!-- Layers -->
-        <div class="panel" id="panel-layers">
-          <div class="panel-header" data-panel="layers">
-            <span>Layers</span>
-            <button class="panel-add" id="btn-layer-add" title="New Layer (empty group)">&#x2b;</button>
-            <button class="panel-collapse">&#x25BC;</button>
-          </div>
-          <div class="panel-body panel-body-layers">
-            <ul id="layers-list"></ul>
-          </div>
-          <div class="panel-footer">
-            <button id="btn-layer-up" title="Move Up">&#x2191;</button>
-            <button id="btn-layer-down" title="Move Down">&#x2193;</button>
-            <button id="btn-layer-duplicate" title="Duplicate">&#x2398;</button>
-            <button id="btn-layer-delete" title="Delete">&#x1F5D1;</button>
           </div>
         </div>
       </aside>
