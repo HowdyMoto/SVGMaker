@@ -24,7 +24,7 @@ function ensureStyles(): void {
       pointer-events: auto; max-width: 460px;
       display: flex; align-items: flex-start; gap: 10px;
       padding: 11px 14px; border-radius: 8px;
-      background: #3c3c3c; border: 1px solid #555; color: #e8e8e8;
+      background: var(--ai-panel); border: 1px solid #555; color: #e8e8e8;
       box-shadow: 0 8px 28px rgba(0,0,0,0.45); font-size: 12.5px; line-height: 1.4;
       opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease;
     }
@@ -32,7 +32,7 @@ function ensureStyles(): void {
     .toast-icon { flex: none; margin-top: 1px; color: #f0c040; }
     .toast-msg { flex: 1 1 auto; }
     .toast-close {
-      flex: none; background: none; border: none; color: #999; cursor: pointer;
+      flex: none; background: none; border: none; color: var(--ai-text-dim); cursor: pointer;
       font-size: 15px; line-height: 1; padding: 0 2px;
     }
     .toast-close:hover { color: #ddd; }

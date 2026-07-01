@@ -23,14 +23,14 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .loading-overlay {
-      position: fixed; inset: 0; z-index: 10000;
+      position: fixed; inset: 0; z-index: var(--z-modal);
       display: flex; align-items: center; justify-content: center;
       background: rgba(20, 20, 20, 0.55);
       font-family: 'Segoe UI', system-ui, sans-serif;
     }
     .loading-card {
       min-width: 300px; max-width: 70vw; padding: 22px 26px;
-      background: #3c3c3c; border: 1px solid #555; border-radius: 8px;
+      background: var(--ai-panel); border: 1px solid #555; border-radius: 8px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5); text-align: center; color: #e6e6e6;
     }
     .loading-label {
@@ -38,10 +38,10 @@ function ensureStyles(): void {
       overflow: hidden; text-overflow: ellipsis;
     }
     .loading-track {
-      height: 6px; border-radius: 3px; background: #2a2a2a; overflow: hidden;
+      height: 6px; border-radius: 3px; background: var(--ai-border); overflow: hidden;
     }
     .loading-bar {
-      height: 100%; width: 35%; border-radius: 3px; background: #2196f3;
+      height: 100%; width: 35%; border-radius: 3px; background: var(--ai-accent);
       will-change: transform;
       animation: loading-slide 1.1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
