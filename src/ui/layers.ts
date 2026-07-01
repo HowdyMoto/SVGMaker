@@ -70,7 +70,7 @@ function flattenVisible(list: ShapeData[], depth: number, out: LayerRow[]): void
   for (let i = list.length - 1; i >= 0; i--) {
     const sh = list[i];
     out.push({ shape: sh, depth });
-    const isGroup = sh.type === 'group' && sh.children && sh.children.length > 0;
+    const isGroup = (sh.type === 'group' || sh.type === 'frame') && sh.children && sh.children.length > 0;
     if (isGroup && sh.element.getAttribute('data-collapsed') !== 'true') {
       flattenVisible(sh.children!, depth + 1, out);
     }
@@ -149,7 +149,7 @@ function buildRow(row: LayerRow): HTMLLIElement {
   const state = curState!;
   const list = listEl!;
   const { shape, depth } = row;
-  const isGroup = shape.type === 'group' && shape.children && shape.children.length > 0;
+  const isGroup = (shape.type === 'group' || shape.type === 'frame') && shape.children && shape.children.length > 0;
   const isCollapsed = shape.element.getAttribute('data-collapsed') === 'true';
 
   const li = document.createElement('li');
@@ -318,6 +318,7 @@ function getShapeIcon(type: string): string {
     case 'path': return '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 14 Q8 2 14 8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
     case 'text': return '<svg viewBox="0 0 16 16" width="12" height="12"><text x="8" y="13" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">T</text></svg>';
     case 'group': return '<svg viewBox="0 0 16 16" width="12" height="12"><rect x="1" y="3" width="8" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="5" y="6" width="8" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+    case 'frame': return '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M5 1v14M11 1v14M1 5h14M1 11h14" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
     case 'image': return '<svg viewBox="0 0 16 16" width="12" height="12"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><polyline points="2,12 6,8 9,10 12,6 14,9" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
     case 'use': return '<svg viewBox="0 0 16 16" width="12" height="12"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
     case 'boolean': return '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="6" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="10" cy="8" r="4.5" fill="currentColor" fill-opacity="0.35" stroke="currentColor" stroke-width="1.2"/></svg>';
