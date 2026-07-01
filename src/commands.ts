@@ -135,6 +135,8 @@ export const COMMANDS: Command[] = [
   // ---- Object ----
   { id: 'object.group', label: 'Group', kind: 'action', accel: 'Mod+G', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => c.state.groupSelectedShapes() },
   { id: 'object.ungroup', label: 'Ungroup', kind: 'action', accel: 'Mod+Shift+G', enabled: (c) => primary(c)?.type === 'group', run: (c) => { const p = primary(c); if (p) c.state.ungroupShape(p.id); } },
+  { id: 'object.clip-make', label: 'Make Clipping Mask', kind: 'action', accel: 'Mod+7', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { c.state.makeClippingMask(); } },
+  { id: 'object.clip-release', label: 'Release Clipping Mask', kind: 'action', accel: 'Mod+Alt+7', enabled: (c) => !!primary(c)?.element.hasAttribute('data-clip-group'), run: (c) => { const p = primary(c); if (p) c.state.releaseClippingMask(p.id); } },
   { id: 'object.bring-to-front', label: 'Bring to Front', kind: 'action', accel: 'Mod+Shift+]', enabled: hasSelection, run: (c) => c.state.bringToFront() },
   { id: 'object.bring-forward', label: 'Bring Forward', kind: 'action', accel: 'Mod+]', enabled: hasSelection, run: (c) => { const p = primary(c); if (p) c.state.moveShapeUp(p.id); } },
   { id: 'object.send-backward', label: 'Send Backward', kind: 'action', accel: 'Mod+[', enabled: hasSelection, run: (c) => { const p = primary(c); if (p) c.state.moveShapeDown(p.id); } },

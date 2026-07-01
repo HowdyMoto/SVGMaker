@@ -374,6 +374,11 @@ export class SelectTool extends BaseTool {
     }
 
     if (this.dragging || this.resizing || this.rotating || this.radiusing) {
+      // A plain move feeds step-and-repeat: if it nudged the last duplicate, its
+      // delta becomes the ⌘D offset (any other move breaks the chain).
+      if (this.dragging && !this.resizing && !this.rotating && !this.radiusing) {
+        this.state.notifyMovedSelection(this.appliedDx, this.appliedDy);
+      }
       this.state.saveHistory();
       this.dragging = false;
       this.resizing = false;

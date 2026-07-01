@@ -21,6 +21,8 @@ import { updateSelectionOverlay } from './ui/selection-overlay';
 import { renderNodeOverlay } from './ui/node-overlay';
 import { updateNodeHint } from './ui/node-hint';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
+import { setupEffects, updateEffectsPanel } from './ui/effects';
+import { setupMarkers, updateMarkersPanel } from './ui/markers';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { setupMenus } from './ui/menus';
 import { drawRulers } from './ui/rulers';
@@ -132,6 +134,8 @@ function onStateChange(): void {
   if (state.interactive) return;
 
   updatePropertiesPanel(state);
+  updateEffectsPanel(state);
+  updateMarkersPanel(state);
   updateLayersPanel(state);
   updateArtboardsPanel(state);
   updateSymbolsPanel(state);
@@ -303,6 +307,8 @@ document.getElementById('btn-zoom-fit')?.addEventListener('click', () => {
 // Setup
 setupMenus(commandCtx);
 setupProperties(state);
+setupEffects(state);
+setupMarkers(state);
 setupLayerButtons(commandCtx);
 setupArtboardButtons(state);
 setupArtboardProps(state);

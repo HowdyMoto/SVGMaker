@@ -28,6 +28,38 @@ export function setupAlign(state: AppState): void {
       state.onChange_public();
     });
   });
+
+  // Distribute: evenly space the centers of 3+ selected objects between the two
+  // outermost, which stay put (matches Illustrator's Distribute Objects).
+  document.querySelectorAll('.align-buttons button[data-distribute]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const axis = btn.getAttribute('data-distribute')!; // 'h' | 'v'
+      const items = state.selectedShapeIds
+        .map(id => state.findShapeById(id))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map(s => {
+          const el = s.element as SVGElement;
+          let bbox: DOMRect;
+          try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { return null; }
+          const center = axis === 'h' ? bbox.x + bbox.width / 2 : bbox.y + bbox.height / 2;
+          return { el, tag: el.tagName.toLowerCase(), bbox, center };
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x);
+      if (items.length < 3) return;
+
+      items.sort((a, b) => a.center - b.center);
+      const first = items[0].center;
+      const step = (items[items.length - 1].center - first) / (items.length - 1);
+      for (let i = 1; i < items.length - 1; i++) {
+        const it = items[i];
+        const target = first + i * step;
+        if (axis === 'h') setPos(it.el, it.tag, target - it.bbox.width / 2, it.bbox.y, it.bbox);
+        else setPos(it.el, it.tag, it.bbox.x, target - it.bbox.height / 2, it.bbox);
+      }
+      state.saveHistory();
+      state.onChange_public();
+    });
+  });
 }
 
 function setPos(el: SVGElement, tag: string, x: number, y: number, bbox: DOMRect): void {

@@ -82,6 +82,9 @@
             <button data-action="object.group">Group</button>
             <button data-action="object.ungroup">Ungroup</button>
             <div class="menu-divider"></div>
+            <button data-action="object.clip-make">Make Clipping Mask</button>
+            <button data-action="object.clip-release">Release Clipping Mask</button>
+            <div class="menu-divider"></div>
             <button data-action="object.create-symbol">Create Symbol</button>
             <button data-action="object.detach-symbol">Detach Instance</button>
             <div class="menu-divider"></div>
@@ -468,6 +471,65 @@
               <span class="appearance-unit">px</span>
             </div>
 
+            <!-- Arrowheads / markers (lines & open paths) -->
+            <div class="appearance-row" id="prop-markers-row" style="display:none">
+              <span class="appearance-label" title="Line ends">Ends</span>
+              <select id="mk-start" class="appearance-select" title="Start marker">
+                <option value="">Start: None</option>
+                <option value="mk-arrow">Start: Arrow</option>
+                <option value="mk-dot">Start: Dot</option>
+                <option value="mk-open">Start: Open</option>
+              </select>
+              <select id="mk-end" class="appearance-select" title="End marker">
+                <option value="">End: None</option>
+                <option value="mk-arrow">End: Arrow</option>
+                <option value="mk-dot">End: Dot</option>
+                <option value="mk-open">End: Open</option>
+              </select>
+            </div>
+
+            <!-- Blend mode -->
+            <div class="appearance-row" id="prop-blend-row" style="display:none">
+              <span class="appearance-label" title="Blend mode">Blend</span>
+              <select id="fx-blend" class="appearance-select" title="Blend mode">
+                <option value="normal">Normal</option>
+                <option value="multiply">Multiply</option>
+                <option value="screen">Screen</option>
+                <option value="overlay">Overlay</option>
+                <option value="darken">Darken</option>
+                <option value="lighten">Lighten</option>
+                <option value="color-dodge">Color Dodge</option>
+                <option value="color-burn">Color Burn</option>
+                <option value="hard-light">Hard Light</option>
+                <option value="soft-light">Soft Light</option>
+                <option value="difference">Difference</option>
+                <option value="exclusion">Exclusion</option>
+                <option value="hue">Hue</option>
+                <option value="saturation">Saturation</option>
+                <option value="color">Color</option>
+                <option value="luminosity">Luminosity</option>
+              </select>
+            </div>
+
+            <!-- Effects (blur / drop shadow) -->
+            <div class="appearance-row" id="prop-effects-row" style="display:none">
+              <span class="appearance-label" title="Gaussian Blur">Blur</span>
+              <input type="range" id="fx-blur" min="0" max="40" step="0.5" value="0" class="appearance-slider" title="Blur amount" />
+              <span id="fx-blur-val" class="appearance-pct">0</span>
+            </div>
+            <div class="appearance-row" id="prop-shadow-row" style="display:none">
+              <button class="appearance-toggle" id="fx-shadow-toggle" title="Toggle drop shadow">Shadow</button>
+              <input type="color" id="fx-shadow-color" value="#000000" class="fx-color" title="Shadow color" />
+              <input type="range" id="fx-shadow-opacity" min="0" max="1" step="0.05" value="0.5" class="appearance-slider" title="Shadow opacity" />
+            </div>
+            <div class="appearance-row" id="prop-shadow-params" style="display:none">
+              <span class="appearance-label">Offset</span>
+              <input type="number" id="fx-shadow-dx" value="4" step="1" class="appearance-weight" style="width:42px" title="Shadow X offset" />
+              <input type="number" id="fx-shadow-dy" value="4" step="1" class="appearance-weight" style="width:42px" title="Shadow Y offset" />
+              <span class="appearance-label" title="Shadow blur">Soft</span>
+              <input type="number" id="fx-shadow-blur" value="4" step="0.5" min="0" class="appearance-weight" style="width:42px" title="Shadow blur" />
+            </div>
+
             <!-- Node point type (shown while node-editing a path) -->
             <div class="appearance-row" id="prop-node-row" style="display:none">
               <span class="appearance-label" title="Anchor point type">Point</span>
@@ -506,6 +568,12 @@
               </button>
               <button data-align="bottom" title="Align Bottom">
                 <svg viewBox="0 0 20 20"><line x1="2" y1="17" x2="18" y2="17" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="5" width="4" height="12" fill="currentColor"/><rect x="12" y="9" width="4" height="8" fill="currentColor"/></svg>
+              </button>
+              <button data-distribute="h" title="Distribute Horizontal Centers (3+ objects)">
+                <svg viewBox="0 0 20 20"><rect x="1" y="6" width="3" height="8" fill="currentColor"/><rect x="8.5" y="6" width="3" height="8" fill="currentColor"/><rect x="16" y="6" width="3" height="8" fill="currentColor"/></svg>
+              </button>
+              <button data-distribute="v" title="Distribute Vertical Centers (3+ objects)">
+                <svg viewBox="0 0 20 20"><rect x="6" y="1" width="8" height="3" fill="currentColor"/><rect x="6" y="8.5" width="8" height="3" fill="currentColor"/><rect x="6" y="16" width="8" height="3" fill="currentColor"/></svg>
               </button>
             </div>
           </div>
