@@ -27,6 +27,8 @@ import {
   resetProjectFile,
   confirmDiscard,
 } from './ui/project-file';
+import { saveToCloud, openFromCloud } from './ui/cloud';
+import { getCloudDoc } from './lib/cloud-doc';
 
 /** Everything a command needs to run. Built once by main.ts and reused. */
 export interface CommandContext {
@@ -83,8 +85,13 @@ export const COMMANDS: Command[] = [
     },
   },
   { id: 'file.open', label: 'Open…', kind: 'action', accel: 'Mod+O', run: (c) => openProject(c.state) },
-  { id: 'file.save', label: 'Save', kind: 'action', accel: 'Mod+S', run: (c) => saveProject(c.state) },
+  // ⌘S targets the cloud when the doc is a cloud doc, otherwise the local file.
+  { id: 'file.save', label: 'Save', kind: 'action', accel: 'Mod+S', run: (c) => { if (getCloudDoc().id) void saveToCloud(c.state); else void saveProject(c.state); } },
   { id: 'file.save-as', label: 'Save As…', kind: 'action', run: (c) => saveProjectAs(c.state) },
+
+  // ---- Cloud ---- (enabled once signed in; Supabase-gated)
+  { id: 'cloud.open', label: 'Open from Cloud…', kind: 'action', enabled: () => isAuthConfigured && isSignedIn(), run: (c) => { void openFromCloud(c.state); } },
+  { id: 'cloud.save', label: 'Save to Cloud', kind: 'action', enabled: () => isAuthConfigured && isSignedIn(), run: (c) => { void saveToCloud(c.state); } },
   { id: 'file.import-svg', label: 'Append SVG…', kind: 'action', run: (c) => importSVG(c.state) },
   { id: 'file.import-image', label: 'Append Image…', kind: 'action', run: (c) => pickAndImportImage(c.state) },
   {

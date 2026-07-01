@@ -37,6 +37,7 @@ import { setupRecentFilesMenu } from './ui/recent-files';
 import { readSvgFile } from './core/file-access';
 import { createCommandPalette } from './ui/command-palette';
 import { setupAccountUI } from './ui/account';
+import { setupCloud, noteDocumentChanged } from './ui/cloud';
 import { setupNumberScrub } from './ui/number-scrub';
 import type { Tool } from './tools/base';
 import type { ToolName } from './core/types';
@@ -140,6 +141,8 @@ function onStateChange(): void {
   updateArtboardsPanel(state);
   updateSymbolsPanel(state);
   updatePathfinderPanel(state);
+
+  noteDocumentChanged(); // schedule a debounced autosave if this is a cloud doc
 }
 
 function setTool(toolName: ToolName): void {
@@ -320,6 +323,7 @@ if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = stat
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
 setupAccountUI(); // no-op until Supabase env vars are set (see .env.example)
+setupCloud(state); // cloud save/sync UI; inert until signed in
 setupNumberScrub(); // Unity-style drag-to-scrub on every numeric field's label
 commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 

@@ -14,6 +14,7 @@ import { rememberRecentFile } from './recent-files';
 import { withLoadingOverlay } from './loading-overlay';
 import { showToast } from './toast';
 import { SVG_NS_DECLS, ensureSvgNamespaces } from '../core/svg-ns';
+import { clearCloudDoc } from '../lib/cloud-doc';
 
 const FORMAT_VERSION = 1;
 const SVG_EXTENSION = '.svg';
@@ -28,7 +29,7 @@ const PICKER_TYPES: FilePickerType[] = [
 let currentHandle: FileSystemFileHandle | null = null;
 
 /** Update the title bar / document title with the current file name. */
-function setProjectName(name: string | null): void {
+export function setProjectName(name: string | null): void {
   const label = document.getElementById('project-name');
   const display = name ?? 'Untitled';
   if (label) label.textContent = display;
@@ -38,6 +39,7 @@ function setProjectName(name: string | null): void {
 /** Reset to a fresh, unsaved document (called when starting a new file). */
 export function resetProjectFile(): void {
   currentHandle = null;
+  clearCloudDoc();
   setProjectName(null);
 }
 
@@ -323,6 +325,7 @@ export async function openProject(state: AppState): Promise<void> {
       const text = await readSvgFile(file);
       await loadDocumentStringWithFeedback(state, text, file.name);
       currentHandle = null; // can't write back without FS Access
+      clearCloudDoc();
       setProjectName(file.name);
     } catch (err) {
       alert('Failed to open: ' + (err instanceof Error ? err.message : String(err)));
@@ -335,6 +338,7 @@ export async function openProject(state: AppState): Promise<void> {
 export async function openTextWithoutHandle(state: AppState, text: string, name: string): Promise<void> {
   await loadDocumentStringWithFeedback(state, text, name);
   currentHandle = null;
+  clearCloudDoc();
   setProjectName(name);
 }
 
@@ -343,6 +347,7 @@ export async function openHandle(state: AppState, handle: FileSystemFileHandle):
   const text = await readHandle(handle);
   await loadDocumentStringWithFeedback(state, text, handle.name);
   currentHandle = handle;
+  clearCloudDoc(); // a local file is now the source of truth, not a cloud doc
   setProjectName(handle.name);
   await rememberRecentFile(handle);
 }
