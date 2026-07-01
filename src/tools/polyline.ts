@@ -1,3 +1,4 @@
+import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
 import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
@@ -30,7 +31,7 @@ export class PolylineTool extends BaseTool {
     dot.setAttribute('cx', String(pt.x));
     dot.setAttribute('cy', String(pt.y));
     dot.setAttribute('r', '3');
-    dot.setAttribute('fill', '#20a0ff');
+    dot.setAttribute('fill', tokens.selectionAccent);
     dot.setAttribute('stroke', 'white');
     dot.setAttribute('stroke-width', '1');
     this.guidesLayer.appendChild(dot);
@@ -59,7 +60,7 @@ export class PolylineTool extends BaseTool {
     if (!this.previewEl) {
       this.previewEl = document.createElementNS(this.NS, 'polyline') as SVGPolylineElement;
       this.previewEl.setAttribute('fill', 'none');
-      this.previewEl.setAttribute('stroke', '#20a0ff');
+      this.previewEl.setAttribute('stroke', tokens.selectionAccent);
       this.previewEl.setAttribute('stroke-width', '1.5');
       this.previewEl.setAttribute('stroke-dasharray', '5,5');
       this.guidesLayer.appendChild(this.previewEl);

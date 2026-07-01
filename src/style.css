@@ -36,9 +36,31 @@
   --controlbar-h: 32px;
   --statusbar-h: 22px;
 
-  /* Stacking ladder — keep overlay layers ordered in one place rather than as
-   * scattered magic numbers. Centered modals sit on top of everything. */
-  --z-modal: 10000;
+  /* Stacking ladder — overlay layers ordered in one place rather than as
+   * scattered magic numbers. Values unchanged from the originals they replaced,
+   * so on-screen stacking is identical; this just names the tiers. */
+  --z-hud: 50;        /* transient HUDs (gesture readout, hints) */
+  --z-chrome: 100;    /* docked app chrome (menu bar) */
+  --z-menu: 200;      /* menu-bar dropdowns */
+  --z-popover: 300;   /* anchored popovers (account menu) */
+  --z-picker: 500;    /* color-picker overlay/panel */
+  --z-floating: 1000; /* command palette, context menus, pathfinder popover */
+  --z-modal: 10000;   /* centered modal dialogs (top of everything) */
+
+  /* Spacing scale — the convention for new CSS so padding/gaps stop being
+   * one-off px values. Existing chrome predates it and isn't retrofitted. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* Type scale — the discrete font sizes the UI actually uses, named. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-xl: 22px;
 }
 
 html, body {
@@ -90,7 +112,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   padding: 0 4px;
   border-bottom: 1px solid var(--ai-border);
   flex-shrink: 0;
-  z-index: 100;
+  z-index: var(--z-chrome);
 }
 
 .menu-items {
@@ -132,7 +154,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   background: var(--ai-menu-bg);
   border: 1px solid var(--ai-border);
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-  z-index: 200;
+  z-index: var(--z-menu);
   padding: 4px 0;
 }
 
@@ -191,7 +213,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-floating);
 }
 .cmdk-overlay[hidden] { display: none; }
 .cmdk-panel {
@@ -289,6 +311,74 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* Export dialog: width only — the surface/behaviour come from .modal-dialog. */
 .export-dialog { width: 420px; }
 
+/* Dialog section chrome (see ui/components.ts). */
+.modal-header {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--ai-border);
+}
+.modal-title { font-size: var(--text-md); font-weight: 600; color: var(--ai-text-bright); }
+.modal-body { padding: 14px 18px; }
+.modal-footer {
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--ai-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* --- Reusable controls (see ui/components.ts) ----------------------------- */
+.btn {
+  background: var(--ai-btn);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 3px;
+  color: var(--ai-text);
+  padding: 6px var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.btn:hover { background: var(--ai-btn-hover); }
+.btn--primary {
+  background: var(--ai-accent);
+  border-color: var(--ai-accent-dim);
+  color: var(--ai-white);
+  font-weight: 600;
+  padding: 6px 20px;
+}
+.btn--primary:hover { background: var(--ai-accent-dim); }
+.btn--sm { padding: 3px 10px; font-size: var(--text-xs); }
+
+.ui-select, .ui-input {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  background: var(--ai-input);
+  color: var(--ai-text);
+  border: 1px solid var(--ai-border-light);
+  border-radius: 3px;
+  padding: 0 var(--space-2);
+}
+
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--ai-text-dim);
+  font-size: var(--text-xs);
+}
+.field-actions { display: flex; gap: var(--space-2); margin-bottom: 6px; }
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.check-row:hover { background: var(--ai-highlight); }
+.check-row input { accent-color: var(--ai-accent); }
+
 .about-overlay {
   position: fixed;
   inset: 0;
@@ -296,7 +386,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-modal);
 }
 .about-dialog {
   position: relative;
@@ -444,7 +534,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   padding: 4px 0;
-  z-index: 300;
+  z-index: var(--z-popover);
 }
 .account-popover-email {
   padding: 4px 14px 6px;
@@ -1062,7 +1152,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   font-size: 11px;
   color: var(--ai-text-dim);
   pointer-events: none; /* never intercept canvas drags */
-  z-index: 50;
+  z-index: var(--z-hud);
 }
 .gesture-hud[hidden] { display: none; }
 
@@ -1116,7 +1206,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   font-size: 11px;
   color: var(--ai-text-dim);
   pointer-events: none;
-  z-index: 50;
+  z-index: var(--z-hud);
 }
 .group-hint[hidden] { display: none; }
 
@@ -1862,7 +1952,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 
 .context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-floating);
   min-width: 130px;
   background: var(--ai-panel);
   border: 1px solid var(--ai-border-light);
@@ -1999,7 +2089,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .cpicker-overlay {
   position: fixed;
   inset: 0;
-  z-index: 500;
+  z-index: var(--z-picker);
 }
 
 .cpicker-panel {
@@ -2010,7 +2100,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border-radius: 4px;
   box-shadow: 0 6px 24px rgba(0,0,0,0.5);
   padding: 10px;
-  z-index: 501;
+  z-index: calc(var(--z-picker) + 1);
 }
 
 .cpicker-header {
@@ -2416,7 +2506,7 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
 /* Contextual Pathfinder popover (floats over the selection) */
 .pathfinder-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-floating);
   display: flex;
   align-items: center;
   gap: 2px;

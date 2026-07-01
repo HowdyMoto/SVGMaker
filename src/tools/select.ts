@@ -1,3 +1,4 @@
+import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point, ShapeData, BBox } from '../core/types';
 import { scalePathData } from '../core/path-model';
@@ -464,7 +465,7 @@ export class SelectTool extends BaseTool {
     rect.setAttribute('width', '0');
     rect.setAttribute('height', '0');
     rect.setAttribute('fill', 'rgba(32, 160, 255, 0.08)');
-    rect.setAttribute('stroke', '#20a0ff');
+    rect.setAttribute('stroke', tokens.selectionAccent);
     rect.setAttribute('stroke-width', '1');
     rect.setAttribute('stroke-dasharray', '4,3');
     rect.setAttribute('pointer-events', 'none');

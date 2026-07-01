@@ -1,3 +1,4 @@
+import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point, Artboard } from '../core/types';
 
@@ -70,7 +71,7 @@ export class ArtboardTool extends BaseTool {
     rect.setAttribute('width', '0');
     rect.setAttribute('height', '0');
     rect.setAttribute('fill', 'rgba(255,255,255,0.5)');
-    rect.setAttribute('stroke', '#20a0ff');
+    rect.setAttribute('stroke', tokens.selectionAccent);
     rect.setAttribute('stroke-width', '1');
     rect.setAttribute('stroke-dasharray', '5,3');
     const guidesLayer = this.svgCanvas.querySelector('#guides-layer')!;
