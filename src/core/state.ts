@@ -23,6 +23,15 @@ import {
 const EDITOR_DEF_IDS = new Set(['grid-small', 'grid-large', 'transparency-check']);
 
 /**
+ * Above this many rendered elements, a document is treated as a bulk/generative
+ * import: rebuildShapesFromDOM stops auto-assigning ids to id-less elements
+ * (which would model each as its own Layers-panel row). Normal artwork is far
+ * below this; it only excludes pathological files (e.g. a 21MB attractor with
+ * 100k segments) where per-element layers are useless and prohibitively slow.
+ */
+const AUTO_ID_MODEL_LIMIT = 20000;
+
+/**
  * Paint/style properties promoted from an inline `style` attribute to the
  * equivalent presentation attribute on import, so the editor's attribute-based
  * model can read and write them. See {@link AppState.flattenInlineStyle}.
@@ -905,19 +914,41 @@ export class AppState {
     this.shapes = [];
     this.shapeById.clear(); // shapes are rebuilt from scratch; drop stale cache
     this.refreshStylesheetProps(); // which paint props an author stylesheet sets
+
+    // Foreign SVGs — and our own "clean"/TraceCraft exports that strip editor
+    // ids — commonly have id-less elements. They render fine, but without an id
+    // they never entered the model, so the artwork appeared on the canvas with
+    // an EMPTY Layers panel. Assign ids so every renderable element becomes a
+    // selectable, editable layer.
+    //
+    // Guardrail: skip this for pathological bulk imports (e.g. a 21MB generative
+    // SVG with 100k+ id-less segments). Modeling each as its own layer is both
+    // useless to edit and prohibitively slow, so above the cap we keep the old
+    // behavior — only elements that already carry an id become layers.
+    const assignIds = this.drawingLayer.querySelectorAll('*').length <= AUTO_ID_MODEL_LIMIT;
+
+    // Bump the id counter above every existing shape-N in the tree first, so the
+    // ids we assign below can't collide with ids already present (top level or
+    // nested inside groups).
+    if (assignIds) {
+      this.drawingLayer.querySelectorAll('[id]').forEach((el) => {
+        const m = (el as SVGElement).id.match(/^shape-(\d+)$/);
+        if (m) this.idCounter = Math.max(this.idCounter, parseInt(m[1]));
+      });
+    }
+
     const elements = this.drawingLayer.children;
-    let maxId = 0;
 
     const processElement = (el: SVGElement): ShapeData | null => {
-      const id = el.id;
-      if (!id) return null;
-      const numMatch = id.match(/shape-(\d+)/);
-      if (numMatch) {
-        const num = parseInt(numMatch[1]);
-        if (num > maxId) maxId = num;
-      }
       const type = this.detectType(el);
-      if (!type) return null;
+      if (!type) return null; // not a renderable shape (metadata, unknown tag)
+
+      let id = el.id;
+      if (!id) {
+        if (!assignIds) return null; // bulk import — leave id-less elements unmodeled
+        id = this.nextId();
+        el.id = id;
+      }
 
       const shape: ShapeData = {
         id, type, element: el,
@@ -966,7 +997,6 @@ export class AppState {
       const shape = processElement(elements[i] as SVGElement);
       if (shape) this.shapes.push(shape);
     }
-    this.idCounter = Math.max(this.idCounter, maxId);
     this.clearStaleIsolation();
   }
 
