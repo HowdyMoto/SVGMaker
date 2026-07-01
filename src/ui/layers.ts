@@ -3,6 +3,10 @@ import type { ShapeData } from '../core/types';
 import type { CommandContext } from '../commands';
 import { runCommand } from '../commands';
 import { showContextMenu, beginInlineRename } from './panel-helpers';
+import { exportArtboardToFile } from './export-dialog';
+
+/** Download-arrow glyph for the per-frame quick-export button. */
+const ICON_EXPORT = '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v7m0 0 3-3m-3 3L5 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 11v2h10v-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
 // Minimalist, monochrome toggle glyphs — flat line icons on a 24-unit grid (the
 // proportions used by well-tuned icon sets) that inherit the row's `currentColor`
@@ -235,6 +239,20 @@ function buildRow(row: LayerRow): HTMLLIElement {
   li.appendChild(icon);
   li.appendChild(name);
 
+  // Per-frame quick export (Figma-style): a download button on frame rows.
+  if (shape.type === 'frame') {
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'layer-export';
+    exportBtn.title = 'Export this frame as SVG';
+    exportBtn.innerHTML = ICON_EXPORT;
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ab = state.getArtboardById(shape.id);
+      if (ab) void exportArtboardToFile(state, ab);
+    });
+    li.appendChild(exportBtn);
+  }
+
   // Click to select
   li.addEventListener('click', (e) => {
     state.activePanel = 'layers';
@@ -266,6 +284,10 @@ function buildRow(row: LayerRow): HTMLLIElement {
     state.activePanel = 'layers';
     showContextMenu(e.clientX, e.clientY, [
       { label: 'Rename', action: () => renameShape(shape.id) },
+      ...(shape.type === 'frame' ? [{
+        label: 'Export SVG…',
+        action: () => { const ab = state.getArtboardById(shape.id); if (ab) void exportArtboardToFile(state, ab); },
+      }] : []),
       { label: 'Delete', danger: true, action: () => state.removeShape(shape.id) },
     ]);
   });

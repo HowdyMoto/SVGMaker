@@ -378,6 +378,8 @@ export class SelectTool extends BaseTool {
       // delta becomes the ⌘D offset (any other move breaks the chain).
       if (this.dragging && !this.resizing && !this.rotating && !this.radiusing) {
         this.state.notifyMovedSelection(this.appliedDx, this.appliedDy);
+        // Figma-style: a moved shape joins the frame now under it (or leaves).
+        this.state.reparentAfterMove([...this.state.selectedShapeIds]);
       }
       this.state.saveHistory();
       this.dragging = false;

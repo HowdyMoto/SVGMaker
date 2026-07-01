@@ -170,12 +170,6 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
       throw new Error(`This file was made with a newer BuzzQuill (v${meta.version}). Please update.`);
     }
 
-    if (meta.artboards?.length) {
-      state.artboards.length = 0;
-      for (const ab of meta.artboards) state.artboards.push({ ...ab });
-      state.activeArtboardId = meta.activeArtboardId ?? state.artboards[0].id;
-    }
-
     state.clearDefs();
     state.importDefsFrom(svgEl);
 
@@ -192,15 +186,25 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
     if (meta.defaultStyle) Object.assign(state.defaultStyle, meta.defaultStyle);
     state.fillNone = meta.fillNone ?? false;
     state.strokeNone = meta.strokeNone ?? false;
+
+    // Current-format docs already contain frame elements (migrate is a no-op).
+    // Legacy docs carry only `meta.artboards`; wrap their content into frames.
+    const boards = meta.artboards?.length
+      ? meta.artboards.map(a => ({ x: a.x, y: a.y, width: a.width, height: a.height, name: a.name }))
+      : [{ x: 0, y: 0, width: 960, height: 540, name: 'Frame 1' }];
+    state.migrateContentToFrames(boards);
+    state.activeArtboardId =
+      (meta.activeArtboardId && state.getArtboardById(meta.activeArtboardId))
+        ? meta.activeArtboardId
+        : (state.artboards[0]?.id ?? null);
   } else {
-    // ---- Foreign SVG: import shapes and wrap them in a single artboard ----
+    // ---- Foreign SVG: import shapes and wrap them in a single frame ----
     state.clearDefs();
     state.importSVGContent(svgString);
 
-    // The imported content lives in the viewBox coordinate system, so the
-    // artboard must match the viewBox — not width/height, which are the display
-    // size and may be in physical units (mm/cm/in) or % that parseFloat would
-    // misread as user units, leaving the art far larger/smaller than the board.
+    // The imported content lives in the viewBox coordinate system, so the frame
+    // must match the viewBox — not width/height, which are the display size and
+    // may be in physical units (mm/cm/in) or % that parseFloat would misread.
     const vb = svgEl.getAttribute('viewBox')?.split(/[\s,]+/).map(Number)
       .filter(n => Number.isFinite(n));
     const hasVb = vb?.length === 4 && vb[2] > 0 && vb[3] > 0;
@@ -208,9 +212,8 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
     const h = (hasVb ? vb![3] : parseFloat(svgEl.getAttribute('height') ?? '')) || 540;
     const x = hasVb ? vb![0] : 0;
     const y = hasVb ? vb![1] : 0;
-    state.artboards.length = 0;
-    state.artboards.push({ id: state.nextArtboardId(), x, y, width: w, height: h, name: 'Artboard 1' });
-    state.activeArtboardId = state.artboards[0].id;
+    state.migrateContentToFrames([{ x, y, width: w, height: h, name: 'Frame 1' }]);
+    state.activeArtboardId = state.artboards[0]?.id ?? null;
   }
 
   state.selectedArtboardId = null;

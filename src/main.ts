@@ -32,7 +32,6 @@ import { setupAlign } from './ui/align';
 import { setupTooltips } from './ui/tooltip';
 import { setupPathfinder, updatePathfinderPanel, updatePathfinderPopover } from './ui/pathfinder';
 import { renderArtboards } from './ui/artboard-renderer';
-import { updateArtboardsPanel, setupArtboardButtons, setupArtboardProps } from './ui/artboards-panel';
 import { updateSymbolsPanel, setupSymbolButtons } from './ui/symbols-panel';
 import { openHandle, openTextWithoutHandle, confirmDiscard } from './ui/project-file';
 import { setupRecentFilesMenu } from './ui/recent-files';
@@ -142,7 +141,6 @@ function onStateChange(): void {
   updateEffectsPanel(state);
   updateMarkersPanel(state);
   updateLayersPanel(state);
-  updateArtboardsPanel(state);
   updateSymbolsPanel(state);
   updatePathfinderPanel(state);
 
@@ -317,8 +315,6 @@ setupProperties(state);
 setupEffects(state);
 setupMarkers(state);
 setupLayerButtons(commandCtx);
-setupArtboardButtons(state);
-setupArtboardProps(state);
 setupColorPicker(state);
 setupAlign(state);
 setupPathfinder(state);
@@ -336,7 +332,6 @@ commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 const initBounds = getArtboardsBounds();
 canvas.initSize(initBounds);
 renderArtboards(state, svgCanvas);
-updateArtboardsPanel(state);
 drawRulers(canvas);
 
 svgCanvas.setAttribute('data-tool', 'select');

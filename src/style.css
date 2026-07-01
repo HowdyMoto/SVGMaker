@@ -2706,3 +2706,16 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
   white-space: normal;
 }
 .tooltip[hidden] { display: none; }
+
+/* Per-frame quick-export button in the Layers panel */
+.layer-export {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent;
+  color: var(--ai-text-dim); cursor: pointer; border-radius: 3px;
+  opacity: 0; transition: opacity 0.1s;
+}
+.layer-item:hover .layer-export { opacity: 0.75; }
+.layer-export:hover { opacity: 1; background: var(--ai-btn-hover); color: var(--ai-text); }

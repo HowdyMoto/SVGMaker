@@ -345,6 +345,65 @@ export class AppState {
     this.addFrame(ab.x, ab.y, ab.width, ab.height, ab.name);
   }
 
+  /**
+   * Migrate freshly-imported legacy content (no frames) into frame(s): for each
+   * legacy board, wrap the top-level shapes whose center falls inside it into a
+   * new frame (world→frame-local). No-op if the imported markup already has
+   * frames (a current-format doc). Does not save history (the caller does).
+   */
+  migrateContentToFrames(boards: ReadonlyArray<{ x: number; y: number; width: number; height: number; name: string }>): void {
+    if (this.shapes.some(s => s.type === 'frame')) return; // already frames
+    const top = [...this.shapes];
+    const moved = new Set<string>();
+    for (const b of boards) {
+      const g = this.createFrameElement(b.x, b.y, b.width, b.height, b.name);
+      this.drawingLayer.appendChild(g);
+      for (const sh of top) {
+        if (moved.has(sh.id)) continue;
+        let bbox: DOMRect;
+        try { bbox = (sh.element as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
+        const cx = bbox.x + bbox.width / 2, cy = bbox.y + bbox.height / 2;
+        if (cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height) {
+          this.offsetElement(sh.element, -b.x, -b.y);
+          g.appendChild(sh.element);
+          moved.add(sh.id);
+        }
+      }
+    }
+    this.rebuildShapesFromDOM();
+  }
+
+  /**
+   * After a drag-move, reparent each moved shape into the frame now under its
+   * center (or out to the pasteboard), converting coords between world and
+   * frame-local space. Frames themselves are not reparented. Called by the Select
+   * tool before it saves history.
+   */
+  reparentAfterMove(ids: string[]): void {
+    let changed = false;
+    for (const id of ids) {
+      const shape = this.findShapeById(id);
+      if (!shape || shape.type === 'frame') continue;
+      const el = shape.element;
+      const curParent = el.parentElement as SVGElement | null;
+      const curFrameEl = curParent?.hasAttribute?.('data-frame') ? curParent : null;
+      const curOff = curFrameEl ? this.frameTranslate(curFrameEl) : { x: 0, y: 0 };
+      let bbox: DOMRect;
+      try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
+      const cx = curOff.x + bbox.x + bbox.width / 2;
+      const cy = curOff.y + bbox.y + bbox.height / 2;
+      const targetFrame = this.frameAtPoint(cx, cy);
+      const targetEl: SVGElement = targetFrame ? (targetFrame.element as SVGElement) : this.drawingLayer;
+      if (targetEl === curParent) continue; // unchanged
+      const tOff = targetFrame ? this.frameToArtboard(targetFrame) : { x: 0, y: 0 };
+      const dx = curOff.x - tOff.x, dy = curOff.y - tOff.y; // cur-local → target-local
+      if (dx !== 0 || dy !== 0) this.offsetElement(el, dx, dy);
+      targetEl.appendChild(el);
+      changed = true;
+    }
+    if (changed) this.rebuildShapesFromDOM();
+  }
+
   duplicateArtboard(id: string): void {
     const s = this.frameShapeById(id);
     if (!s) return;
