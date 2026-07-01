@@ -149,31 +149,39 @@ export function computeBoolean(operandDs: string[], op: BooleanOp): string[] {
   }
 }
 
-/** Divide: split the union arrangement into all disjoint regions. */
-function divideAll(items: any[]): string[] {
-  // Start from the first operand; successively divide every accumulated piece by
-  // the next operand, collecting the fragments. Handles the common 2-shape case
-  // exactly and degrades gracefully for more.
-  let pieces: any[] = [items[0]];
-  for (let i = 1; i < items.length; i++) {
-    const cutter = items[i];
-    const nextPieces: any[] = [];
-    for (const piece of pieces) {
-      const result = piece.divide(cutter, { insert: false });
-      nextPieces.push(...flattenResult(result));
-    }
-    // Also keep the parts of the cutter that fell outside everything so far.
-    nextPieces.push(cutter);
-    pieces = nextPieces;
-  }
-  return pieces.map(pathDataOf).filter((d): d is string => !!d);
+/** True when a paper item has effectively no area / no geometry. */
+function isEmptyItem(item: any): boolean {
+  if (!item) return true;
+  const d = (item.pathData ?? '').trim();
+  if (!d) return true;
+  return Math.abs(item.area ?? 0) < 1e-4;
 }
 
-/** Paper boolean results can be Path, CompoundPath, or Group — normalize to items. */
-function flattenResult(result: any): any[] {
-  if (!result) return [];
-  if (result.className === 'Group') return result.children ? [...result.children] : [];
-  return [result];
+/**
+ * Divide: partition the union of the shapes into their atomic arrangement faces
+ * (every minimal region), each disjoint. Incremental partition — for each new
+ * shape, split existing faces into inside/outside pieces and keep the shape's
+ * not-yet-covered remainder. Correct for any number of shapes (unlike a naive
+ * pairwise divide, which leaves overlapping pieces).
+ */
+function divideAll(items: any[]): string[] {
+  let faces: any[] = [items[0]];
+  for (let k = 1; k < items.length; k++) {
+    const shape = items[k];
+    let remainder = shape;
+    const next: any[] = [];
+    for (const face of faces) {
+      const inter = face.intersect(shape, { insert: false });
+      if (isEmptyItem(inter)) { next.push(face); continue; }
+      next.push(inter);
+      const outside = face.subtract(shape, { insert: false });
+      if (!isEmptyItem(outside)) next.push(outside);
+      remainder = remainder.subtract(face, { insert: false });
+    }
+    if (!isEmptyItem(remainder)) next.push(remainder);
+    faces = next;
+  }
+  return faces.map(pathDataOf).filter((d): d is string => !!d && !!d.trim());
 }
 
 function pathDataOf(item: any): string {

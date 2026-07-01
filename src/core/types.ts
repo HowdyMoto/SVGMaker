@@ -13,7 +13,7 @@ export interface BBox {
 export type ToolName =
   | 'select' | 'directSelect' | 'rect' | 'roundedRect' | 'ellipse'
   | 'line' | 'polyline' | 'path' | 'text' | 'hand' | 'zoom'
-  | 'eyedropper' | 'star' | 'polygon' | 'artboard' | 'image';
+  | 'eyedropper' | 'star' | 'polygon' | 'artboard' | 'image' | 'shapeBuilder';
 
 export interface ShapeStyle {
   fill: string;

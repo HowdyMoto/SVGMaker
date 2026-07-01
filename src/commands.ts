@@ -232,6 +232,7 @@ export const COMMANDS: Command[] = [
   // ---- Tools ----
   { id: 'tool.select', label: 'Selection Tool', kind: 'tool', accel: 'V', run: (c) => c.setTool('select') },
   { id: 'tool.direct-select', label: 'Direct Selection Tool', kind: 'tool', accel: 'A', run: (c) => c.setTool('directSelect') },
+  { id: 'tool.shape-builder', label: 'Shape Builder Tool', kind: 'tool', accel: 'Shift+M', run: (c) => c.setTool('shapeBuilder') },
   { id: 'tool.rect', label: 'Rectangle Tool', kind: 'tool', accel: 'M', run: (c) => c.setTool('rect') },
   { id: 'tool.rounded-rect', label: 'Rounded Rectangle Tool', kind: 'tool', run: (c) => c.setTool('roundedRect') },
   { id: 'tool.ellipse', label: 'Ellipse Tool', kind: 'tool', accel: 'L', run: (c) => c.setTool('ellipse') },
