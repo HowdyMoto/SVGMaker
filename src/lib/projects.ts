@@ -19,6 +19,15 @@ export interface CloudProject extends CloudProjectMeta {
   content: string;
 }
 
+/** Raised when a write is refused because the row changed elsewhere since it was
+ *  loaded (optimistic-concurrency guard). */
+export class ProjectConflictError extends Error {
+  constructor() {
+    super('This project was changed somewhere else since you opened it.');
+    this.name = 'ProjectConflictError';
+  }
+}
+
 function client() {
   if (!supabase) throw new Error('Cloud features are not configured.');
   return supabase;
@@ -56,17 +65,36 @@ export async function createCloudProject(name: string, content: string): Promise
   return data as CloudProjectMeta;
 }
 
-/** Overwrite an existing project's content (and optionally rename it). */
-export async function updateCloudProject(id: string, content: string, name?: string): Promise<void> {
-  const patch: { content: string; name?: string } = { content };
-  if (name !== undefined) patch.name = name;
-  const { error } = await client().from('projects').update(patch).eq('id', id);
+/**
+ * Overwrite an existing project's content, returning the row's new `updated_at`.
+ *
+ * When `expectedUpdatedAt` is given, the write only lands if the row still
+ * carries that timestamp; otherwise it changed elsewhere and we throw
+ * {@link ProjectConflictError} instead of clobbering the newer version. Omit it
+ * to force the write (last-write-wins).
+ */
+export async function updateCloudProject(
+  id: string, content: string, expectedUpdatedAt?: string,
+): Promise<string> {
+  let q = client().from('projects').update({ content }).eq('id', id);
+  if (expectedUpdatedAt) q = q.eq('updated_at', expectedUpdatedAt);
+  const { data, error } = await q.select('updated_at');
   if (error) throw error;
+  if (!data || data.length === 0) {
+    // No row matched: a stale timestamp (someone else saved) or the row is gone.
+    if (expectedUpdatedAt) throw new ProjectConflictError();
+    throw new Error('Project not found.');
+  }
+  return data[0].updated_at as string;
 }
 
-export async function renameCloudProject(id: string, name: string): Promise<void> {
-  const { error } = await client().from('projects').update({ name }).eq('id', id);
+/** Rename a project, returning its new `updated_at` (the trigger bumps it). */
+export async function renameCloudProject(id: string, name: string): Promise<string> {
+  const { data, error } = await client()
+    .from('projects').update({ name }).eq('id', id).select('updated_at');
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Project not found.');
+  return data[0].updated_at as string;
 }
 
 export async function deleteCloudProject(id: string): Promise<void> {

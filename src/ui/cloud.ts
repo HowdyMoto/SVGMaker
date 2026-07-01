@@ -14,11 +14,11 @@ import {
   serializeDocumentSVG, loadDocumentSVG, confirmDiscard, setProjectName,
 } from './project-file';
 import { openModal } from './modal';
-import { getCloudDoc, setCloudDoc, clearCloudDoc } from '../lib/cloud-doc';
+import { getCloudDoc, setCloudDoc, setCloudDocUpdatedAt, setCloudDocName, clearCloudDoc } from '../lib/cloud-doc';
 import {
   listCloudProjects, loadCloudProject, createCloudProject,
   updateCloudProject, renameCloudProject, deleteCloudProject,
-  type CloudProjectMeta,
+  ProjectConflictError, type CloudProjectMeta,
 } from '../lib/projects';
 
 let appState: AppState | null = null;
@@ -28,6 +28,9 @@ let statusClearTimer: number | null = null;
 const AUTOSAVE_IDLE_MS = 2500; // quiet period before autosaving a cloud doc
 let autosaveTimer: number | null = null;
 let autosaving = false;
+// Set when autosave hits a concurrency conflict; pauses further autosaves (so we
+// don't retry-clobber every keystroke) until an explicit Save resolves it.
+let conflictBlocked = false;
 
 /** Mount the menu-bar save-status indicator and remember the app state. */
 export function setupCloud(state: AppState): void {
@@ -43,13 +46,19 @@ export function setupCloud(state: AppState): void {
   else menuBar.appendChild(statusEl);
 }
 
-type Status = 'saving' | 'saved' | 'error' | 'idle';
+type Status = 'saving' | 'saved' | 'error' | 'conflict' | 'idle';
 function setStatus(s: Status): void {
   if (!statusEl) return;
   if (statusClearTimer) { clearTimeout(statusClearTimer); statusClearTimer = null; }
-  const label = s === 'saving' ? 'Saving…' : s === 'saved' ? 'All changes saved' : s === 'error' ? 'Save failed' : '';
+  const label = s === 'saving' ? 'Saving…'
+    : s === 'saved' ? 'All changes saved'
+    : s === 'error' ? 'Save failed'
+    : s === 'conflict' ? 'Changed elsewhere — not saved'
+    : '';
   statusEl.textContent = label;
-  statusEl.className = `cloud-status ${s === 'idle' ? '' : 'show ' + s}`;
+  // 'conflict' reuses the error styling (it's a not-saved state the user must resolve).
+  const cls = s === 'conflict' ? 'error' : s;
+  statusEl.className = `cloud-status ${s === 'idle' ? '' : 'show ' + cls}`;
   if (s === 'saved') {
     statusClearTimer = window.setTimeout(() => { if (statusEl) statusEl.className = 'cloud-status'; }, 2000);
   }
@@ -74,19 +83,38 @@ function escapeHtml(s: string): string {
 export async function saveToCloud(state: AppState): Promise<void> {
   if (!requireSignIn()) return;
   const content = serializeDocumentSVG(state);
-  const { id } = getCloudDoc();
+  const { id, updatedAt } = getCloudDoc();
   try {
     setStatus('saving');
     if (id) {
-      await updateCloudProject(id, content);
+      // Guard against clobbering a save made on another device. On conflict,
+      // this is a user action, so it's OK to ask whether to overwrite.
+      let newTs: string;
+      try {
+        newTs = await updateCloudProject(id, content, updatedAt ?? undefined);
+      } catch (err) {
+        if (err instanceof ProjectConflictError) {
+          const overwrite = window.confirm(
+            'This project was changed on another device since you opened it.\n\n' +
+            'OK = overwrite it with your version.\n' +
+            'Cancel = keep editing (reopen it from the cloud to get the other version).',
+          );
+          if (!overwrite) { setStatus('conflict'); return; }
+          newTs = await updateCloudProject(id, content); // forced (no timestamp guard)
+        } else {
+          throw err;
+        }
+      }
+      setCloudDocUpdatedAt(newTs);
     } else {
       const current = document.getElementById('project-name')?.textContent?.replace(/\.svg$/i, '') || 'Untitled';
       const name = window.prompt('Save to cloud as:', current);
       if (name === null) { setStatus('idle'); return; } // cancelled
       const meta = await createCloudProject(name.trim() || 'Untitled', content);
-      setCloudDoc(meta.id, meta.name);
+      setCloudDoc(meta.id, meta.name, meta.updated_at);
       setProjectName(meta.name);
     }
+    conflictBlocked = false; // an explicit Save re-establishes a clean baseline
     state.markClean();
     setStatus('saved');
   } catch (err) {
@@ -99,7 +127,7 @@ export async function saveToCloud(state: AppState): Promise<void> {
 export function noteDocumentChanged(): void {
   const state = appState;
   if (!state) return;
-  if (!getCloudDoc().id || !isSignedIn() || !state.dirty) return;
+  if (!getCloudDoc().id || !isSignedIn() || !state.dirty || conflictBlocked) return;
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(() => { void doAutosave(); }, AUTOSAVE_IDLE_MS);
 }
@@ -107,17 +135,27 @@ export function noteDocumentChanged(): void {
 async function doAutosave(): Promise<void> {
   const state = appState;
   if (!state) return;
-  const { id } = getCloudDoc();
+  const { id, updatedAt } = getCloudDoc();
   if (!id || autosaving || !state.dirty || !isSignedIn()) return;
   autosaving = true;
   try {
     setStatus('saving');
-    await updateCloudProject(id, serializeDocumentSVG(state));
+    // Optimistic-concurrency guarded: if the row changed on another device,
+    // don't clobber it. Autosave is silent/background, so on conflict we just
+    // stop and flag it (leaving the doc dirty) — the user resolves it via an
+    // explicit Save, which offers to overwrite.
+    const newTs = await updateCloudProject(id, serializeDocumentSVG(state), updatedAt ?? undefined);
+    setCloudDocUpdatedAt(newTs);
     state.markClean();
     setStatus('saved');
   } catch (err) {
-    setStatus('error');
-    console.warn('Cloud autosave failed:', err);
+    if (err instanceof ProjectConflictError) {
+      conflictBlocked = true; // pause autosave until an explicit Save resolves it
+      setStatus('conflict');
+    } else {
+      setStatus('error');
+      console.warn('Cloud autosave failed:', err);
+    }
   } finally {
     autosaving = false;
   }
@@ -140,7 +178,8 @@ export async function openFromCloud(state: AppState): Promise<void> {
     try {
       const full = await loadCloudProject(p.id);
       loadDocumentSVG(state, full.content); // handles render + markClean
-      setCloudDoc(full.id, full.name);
+      setCloudDoc(full.id, full.name, full.updated_at);
+      conflictBlocked = false; // fresh baseline
       setProjectName(full.name);
       modal.close();
     } catch (err) {
@@ -183,8 +222,8 @@ export async function openFromCloud(state: AppState): Promise<void> {
       if (name === null) return;
       const next = name.trim() || p.name;
       try {
-        await renameCloudProject(p.id, next);
-        if (getCloudDoc().id === p.id) { setCloudDoc(p.id, next); setProjectName(next); }
+        const newTs = await renameCloudProject(p.id, next);
+        if (getCloudDoc().id === p.id) { setCloudDocName(next); setCloudDocUpdatedAt(newTs); setProjectName(next); }
         await render();
       } catch (err) {
         alert('Rename failed: ' + (err instanceof Error ? err.message : String(err)));
