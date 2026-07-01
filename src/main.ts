@@ -17,6 +17,7 @@ import { StarTool } from './tools/star';
 import { PolygonShapeTool } from './tools/polygon-tool';
 import { ArtboardTool } from './tools/artboard-tool';
 import { ImageTool } from './tools/image';
+import { ShapeBuilderTool } from './tools/shape-builder';
 import { updateSelectionOverlay } from './ui/selection-overlay';
 import { renderNodeOverlay } from './ui/node-overlay';
 import { updateNodeHint } from './ui/node-hint';
@@ -72,6 +73,7 @@ const toolLabels: Record<ToolName, string> = {
   polygon: 'Polygon Tool',
   artboard: 'Artboard Tool',
   image: 'Image Tool',
+  shapeBuilder: 'Shape Builder Tool',
 };
 
 // Tools
@@ -92,6 +94,7 @@ const tools: Record<ToolName, Tool> = {
   polygon: new PolygonShapeTool(state, canvas, svgCanvas),
   artboard: new ArtboardTool(state, canvas, svgCanvas),
   image: new ImageTool(state, canvas, svgCanvas),
+  shapeBuilder: new ShapeBuilderTool(state, canvas, svgCanvas),
 };
 
 let activeTool: Tool = tools.select;

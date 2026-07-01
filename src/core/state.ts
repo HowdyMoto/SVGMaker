@@ -1392,6 +1392,56 @@ export class AppState {
     return computeBoolean(operandDs, op);
   }
 
+  // ---- Shape Builder support ----
+
+  /**
+   * Decompose the current top-level selection into its arrangement faces (the
+   * atomic regions of the overlapping shapes), in drawing-layer space. Used by the
+   * Shape Builder tool for hit-testing and merge/delete. Returns null if fewer than
+   * two shapes are selected.
+   */
+  async selectionFaces(): Promise<{ faces: string[]; ids: string[] } | null> {
+    const operands = this.shapes.filter((s) =>
+      this.selectedShapeIds.includes(s.id) &&
+      ['path', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'boolean', 'group'].includes(s.type));
+    if (operands.length < 2) return null;
+    await ensureBooleanEngine();
+    const ds = this.operandDsInLayerSpace(operands);
+    if (!ds) return null;
+    const faces = computeBoolean(ds, 'divide').filter((d) => d.trim());
+    if (faces.length === 0) return null;
+    return { faces, ids: operands.map((s) => s.id) };
+  }
+
+  /**
+   * Commit a Shape Builder session: remove the original shapes and add the built
+   * result paths (already in drawing-layer space), each filled with `fill`. Adds
+   * them at the z-position of the lowest original. Selects the results.
+   */
+  replaceShapesWithPaths(originalIds: string[], resultDs: string[], fill: string): void {
+    for (const id of originalIds) this.detachShape(id); // remove without per-shape history
+
+    const SVG = 'http://www.w3.org/2000/svg';
+    const newIds: string[] = [];
+    for (const d of resultDs) {
+      if (!d.trim()) continue;
+      const el = document.createElementNS(SVG, 'path');
+      const id = this.nextId();
+      el.id = id;
+      el.setAttribute('d', d);
+      el.setAttribute('fill', fill);
+      el.setAttribute('fill-rule', 'evenodd');
+      el.setAttribute('data-name', `Shape ${id.replace('shape-', '#')}`);
+      this.drawingLayer.appendChild(el);
+      newIds.push(id);
+    }
+    this.selectedShapeIds = newIds;
+    this.rebuildShapesFromDOM();
+    this.selectedShapeIds = newIds;
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
   /** Assemble the live `<g data-boolean>` wrapper from operand shapes. */
   private buildBooleanShape(
     op: BooleanOp, operands: ShapeData[], resultD: string, insertBefore: SVGElement | null,

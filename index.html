@@ -187,6 +187,9 @@
           <button class="tool-btn" data-tool="directSelect" title="Direct Selection Tool (A)">
             <svg viewBox="0 0 24 24"><path d="M5 3l11 15-4.2-1.4L8.5 21.5V9L5 3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
           </button>
+          <button class="tool-btn" data-tool="shapeBuilder" title="Shape Builder Tool (Shift+M) — select 2+ overlapping shapes, then drag to merge / Alt-click to delete">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="15" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 7.2a6 6 0 0 1 0 9.6a6 6 0 0 1 0-9.6z" fill="currentColor" fill-opacity="0.5"/></svg>
+          </button>
         </div>
 
         <div class="tool-divider"></div>
@@ -319,6 +322,8 @@
           <rect id="artboard-grid" x="0" y="0" width="0" height="0" fill="url(#grid-large)" style="display:none" pointer-events="none"/>
           <!-- Drawing content -->
           <g id="drawing-layer"></g>
+          <!-- Shape Builder face overlay (owned by ShapeBuilderTool; empty otherwise) -->
+          <g id="shapebuilder-layer" pointer-events="none"></g>
           <!-- Artboard labels & handles rendered dynamically -->
           <g id="artboard-labels-layer"></g>
           <g id="artboard-handles-layer"></g>
