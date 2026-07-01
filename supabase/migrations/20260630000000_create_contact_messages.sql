@@ -25,6 +25,8 @@ alter table public.contact_messages enable row level security;
 
 -- Insert-only, for everyone. No select/update/delete policies exist, so those are
 -- denied for anon + authenticated — submissions can't be read or altered via the API.
+-- Drop-then-create so the migration is safe to re-run.
+drop policy if exists "Anyone can submit a contact message" on public.contact_messages;
 create policy "Anyone can submit a contact message"
   on public.contact_messages
   for insert to anon, authenticated
