@@ -30,11 +30,10 @@ let loading: Promise<void> | null = null;
 export async function ensureBooleanEngine(): Promise<void> {
   if (paper) return;
   if (!loading) {
-    // Import paper-CORE, not the default ('paper' = paper-full): the full build
-    // bundles PaperScript's parser, which calls `new Function()` at load time and
-    // is blocked by this app's CSP (script-src 'self', no unsafe-eval). The core
-    // build is geometry-only (Path/CompoundPath/boolean ops) and CSP-safe.
-    loading = import('paper/dist/paper-core.js').then((mod) => {
+    // `paper` is aliased to paper-CORE in vite.config.ts (paper-full bundles a
+    // PaperScript parser that calls `new Function()` — blocked by our CSP). The
+    // core build is geometry-only (Path/CompoundPath/boolean ops) and CSP-safe.
+    loading = import('paper').then((mod) => {
       const p = (mod as any).default ?? mod;
       // A detached canvas gives Paper a project without attaching to the page.
       p.setup(document.createElement('canvas'));
@@ -50,6 +49,67 @@ export async function ensureBooleanEngine(): Promise<void> {
 /** True once Paper is loaded and synchronous compute is available. */
 export function booleanEngineReady(): boolean {
   return !!paper;
+}
+
+// ---- Offset engine (Outline Stroke / Offset Path via paperjs-offset) ----
+
+let paperOffset: any = null;
+let offsetLoading: Promise<void> | null = null;
+
+/** Load paper-core + the offset plugin once. */
+export async function ensureOffsetEngine(): Promise<void> {
+  await ensureBooleanEngine();
+  if (paperOffset) return;
+  if (!offsetLoading) {
+    offsetLoading = import('paperjs-offset').then((mod) => {
+      paperOffset = (mod as any).PaperOffset ?? (mod as any).default;
+    });
+  }
+  await offsetLoading;
+}
+
+export function offsetEngineReady(): boolean {
+  return !!paper && !!paperOffset;
+}
+
+export type StrokeJoin = 'miter' | 'round' | 'bevel';
+export type StrokeCap = 'butt' | 'round';
+
+/**
+ * Offset a path's `d` inward (negative) or outward (positive) by `delta`,
+ * preserving curves. Requires {@link ensureOffsetEngine}. Returns '' on failure.
+ */
+export function offsetPathData(d: string, delta: number, join: StrokeJoin = 'miter'): string {
+  if (!paper || !paperOffset) throw new Error('Offset engine not loaded.');
+  if (!d.trim() || delta === 0) return d;
+  const src = new paper.CompoundPath({ pathData: d, insert: false });
+  let out = '';
+  try {
+    const res = paperOffset.offset(src, delta, { join, insert: false });
+    out = res?.pathData ?? '';
+    res?.remove?.();
+  } catch { out = ''; }
+  src.remove();
+  return out;
+}
+
+/**
+ * Convert a stroke of the given width into a filled outline path's `d` (the
+ * region the stroke covers). Requires {@link ensureOffsetEngine}. Returns '' on
+ * failure or non-positive width.
+ */
+export function outlineStrokeData(d: string, width: number, join: StrokeJoin = 'miter', cap: StrokeCap = 'butt'): string {
+  if (!paper || !paperOffset) throw new Error('Offset engine not loaded.');
+  if (!d.trim() || width <= 0) return '';
+  const src = new paper.CompoundPath({ pathData: d, insert: false });
+  let out = '';
+  try {
+    const res = paperOffset.offsetStroke(src, width / 2, { join, cap, insert: false });
+    out = res?.pathData ?? '';
+    res?.remove?.();
+  } catch { out = ''; }
+  src.remove();
+  return out;
 }
 
 // ---- Core computation ----

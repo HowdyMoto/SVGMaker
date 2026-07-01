@@ -52,6 +52,7 @@
     "@fontsource/work-sans": "^5.2.8",
     "@supabase/supabase-js": "^2.108.2",
     "opentype.js": "^2.0.0",
-    "paper": "^0.12.18"
+    "paper": "^0.12.18",
+    "paperjs-offset": "^1.0.8"
   }
 }

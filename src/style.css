@@ -2603,3 +2603,20 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
 }
 .cloud-act:hover { background: var(--ai-menu-hover); color: var(--ai-text-bright); }
 .cloud-delete:hover { color: #ff6b6b; border-color: #ff6b6b; }
+
+/* Offset Path dialog */
+.offset-dialog { width: 300px; }
+.offset-dialog-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.offset-dialog-title { font-size: 14px; font-weight: 600; color: var(--ai-text, #eee); }
+.offset-dialog-label { font-size: 11px; color: var(--ai-text-dim, #999); }
+.offset-dialog-input {
+  height: 30px; padding: 0 8px; font-size: 13px;
+  background: var(--ai-input, #1e1e1e); color: var(--ai-text, #ddd);
+  border: 1px solid var(--ai-border, #4a4a4a); border-radius: 4px;
+}
+.offset-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.offset-btn {
+  padding: 6px 14px; font-size: 12px; border-radius: 4px; cursor: pointer;
+  background: transparent; color: var(--ai-text, #ddd); border: 1px solid var(--ai-border, #4a4a4a);
+}
+.offset-btn-primary { background: #2d7ff9; border-color: #2d7ff9; color: #fff; }

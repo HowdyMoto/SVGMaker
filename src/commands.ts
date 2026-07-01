@@ -18,6 +18,7 @@ import { showAboutDialog } from './ui/about-dialog';
 import { showLegalDialog } from './ui/legal';
 import { showContactDialog } from './ui/contact-dialog';
 import { pickAndImportImage } from './ui/import-image';
+import { showOffsetDialog } from './ui/offset-dialog';
 import { isAuthConfigured } from './lib/supabase';
 import { isSignedIn, showSignInDialog, signOutUser } from './ui/account';
 import {
@@ -59,6 +60,12 @@ export interface Command {
 
 const hasSelection = (c: CommandContext): boolean => c.state.selectedShapeIds.length > 0;
 const primary = (c: CommandContext) => c.state.getSelectedShape();
+const hasOutlineableStroke = (c: CommandContext): boolean =>
+  c.state.selectedShapeIds.some((id) => {
+    const el = c.state.findShapeById(id)?.element;
+    const stroke = el?.getAttribute('stroke');
+    return !!stroke && stroke !== 'none' && parseFloat(el?.getAttribute('stroke-width') ?? '0') > 0;
+  });
 
 // ---- The commands ----------------------------------------------------------
 
@@ -162,6 +169,8 @@ export const COMMANDS: Command[] = [
   { id: 'path.exclude', label: 'Exclude', kind: 'action', accel: 'Mod+Alt+X', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('exclude'); } },
   { id: 'path.divide', label: 'Divide', kind: 'action', enabled: (c) => c.state.selectedShapeIds.length >= 2, run: (c) => { void c.state.booleanSelection('divide'); } },
   { id: 'path.flatten', label: 'Flatten Compound Shape', kind: 'action', enabled: (c) => primary(c)?.type === 'boolean', run: (c) => { const p = primary(c); if (p) c.state.flattenBoolean(p.id); } },
+  { id: 'path.outline-stroke', label: 'Outline Stroke', kind: 'action', enabled: (c) => hasOutlineableStroke(c), run: (c) => { void c.state.outlineSelectedStroke(); } },
+  { id: 'path.offset', label: 'Offset Path…', kind: 'action', enabled: hasSelection, run: (c) => showOffsetDialog(c.state) },
 
   // ---- View ----
   { id: 'view.zoom-in', label: 'Zoom In', kind: 'action', accel: ['Mod+=', 'Mod+Shift+='], run: (c) => c.canvas.setZoom(c.canvas.getZoom() * 1.25) },
