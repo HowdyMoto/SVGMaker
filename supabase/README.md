@@ -9,8 +9,9 @@ Run the SQL in [`migrations/`](migrations/) against your project — either:
 - **Dashboard:** SQL Editor → paste each file → Run, or
 - **CLI:** `supabase db push`
 
-This creates the `contact_messages` table (insert-only via RLS; you read rows in
-the dashboard).
+This creates the `projects` table (cloud documents, owner-only via RLS) and the
+`contact_messages` table (insert-only via RLS; you read rows in the dashboard),
+plus size guardrails on `projects`.
 
 ## 2. Get pinged in Discord when someone uses the contact form
 
@@ -29,3 +30,17 @@ webhook URL lives in a function *secret*, never in the code.
 3. **Wire the webhook** — *Database → Webhooks → Create*: table `contact_messages`,
    event **Insert**, type **Supabase Edge Function** → `contact-notify`.
 4. **Test** — submit the contact form in the app, watch the message appear in `#contact`.
+
+### (Recommended) Lock the function to your webhook
+
+Edge Functions are publicly invokable, so anyone who learns the URL could POST
+fake rows and spam the channel. To require a shared secret:
+
+- Add another function secret `CONTACT_WEBHOOK_SECRET` — any long random string.
+- On the Database Webhook (step 3), add an **HTTP header** `x-webhook-secret` with
+  the same value.
+
+Once `CONTACT_WEBHOOK_SECRET` is set, the function rejects any call without the
+matching header (401). Leaving it unset keeps the old open behavior. Note: the
+function already passes `allowed_mentions: []` to Discord, so a message that
+contains `@everyone`/`@here` can't actually ping the channel.
