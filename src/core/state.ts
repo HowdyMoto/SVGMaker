@@ -12,6 +12,7 @@ import { MarkersManager, type MarkersHost } from './markers';
 import { AppearanceManager, type AppearanceHost } from './appearance';
 import { WidthStrokeManager, type WidthStrokeHost } from './width-stroke';
 import { PathfinderManager, type PathfinderHost } from './pathfinder';
+import { LayerManager, type LayerHost } from './layers';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
@@ -86,10 +87,6 @@ export class AppState {
    *  supplies the document capture/restore via {@link captureSnapshot} /
    *  {@link restoreHistory}. See core/history.ts. */
   private historyMgr: History;
-  // Step-and-repeat: the offset the next ⌘D applies, and the ids of the most
-  // recent duplicate (so moving exactly that copy refines the offset).
-  private stepOffset: { dx: number; dy: number } | null = null;
-  private lastDuplicateIds: string[] = [];
   private drawingLayer: SVGGElement;
   private onChangeCallback: () => void;
 
@@ -165,6 +162,7 @@ export class AppState {
   private appearanceMgr: AppearanceManager;
   private widthMgr: WidthStrokeManager;
   private pathfinder: PathfinderManager;
+  private layerMgr: LayerManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -280,6 +278,21 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.pathfinder = new PathfinderManager(pathfinderHost);
+    const layerHost: LayerHost = {
+      getShapes: () => this.shapes,
+      setShapes: (shapes) => { this.shapes = shapes; },
+      getSelectedIds: () => this.selectedShapeIds,
+      setSelection: (ids) => { this.selectedShapeIds = ids; },
+      getDrawingLayer: () => this.drawingLayer,
+      findShape: (id) => this.findShapeById(id),
+      nextId: () => this.nextId(),
+      offsetElement: (el, dx, dy) => this.offsetElement(el, dx, dy),
+      reIdGroupChildren: (el) => this.reIdGroupChildren(el),
+      rebuild: () => this.rebuildShapesFromDOM(),
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.layerMgr = new LayerManager(layerHost);
     // Create the default frame ("Frame 1"). Frames are real <g data-frame>
     // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
     // artboards cache from them.
@@ -865,278 +878,20 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  toggleVisibility(id: string): void {
-    const shape = this.findShapeById(id);
-    if (!shape) return;
-    shape.visible = !shape.visible;
-    (shape.element as SVGElement).style.display = shape.visible ? '' : 'none';
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  toggleLock(id: string): void {
-    const shape = this.findShapeById(id);
-    if (!shape) return;
-    shape.locked = !shape.locked;
-    // Mirror onto the element so the lock survives history (which snapshots the
-    // drawing layer's markup) and round-trips through rebuildShapesFromDOM.
-    if (shape.locked) shape.element.setAttribute('data-locked', 'true');
-    else shape.element.removeAttribute('data-locked');
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Make every top-level shape visible again. */
-  showAll(): void {
-    for (const s of this.shapes) {
-      s.visible = true;
-      (s.element as SVGElement).style.display = '';
-    }
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Unlock every top-level shape. */
-  unlockAll(): void {
-    for (const s of this.shapes) {
-      s.locked = false;
-      s.element.removeAttribute('data-locked');
-    }
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  moveShapeUp(id: string): void {
-    const idx = this.shapes.findIndex(s => s.id === id);
-    if (idx < this.shapes.length - 1) {
-      const shape = this.shapes[idx];
-      const nextShape = this.shapes[idx + 1];
-      this.shapes[idx] = nextShape;
-      this.shapes[idx + 1] = shape;
-      this.drawingLayer.insertBefore(nextShape.element, shape.element);
-      this.saveHistory();
-      this.onChangeCallback();
-    }
-  }
-
-  moveShapeDown(id: string): void {
-    const idx = this.shapes.findIndex(s => s.id === id);
-    if (idx > 0) {
-      const shape = this.shapes[idx];
-      const prevShape = this.shapes[idx - 1];
-      this.shapes[idx] = prevShape;
-      this.shapes[idx - 1] = shape;
-      this.drawingLayer.insertBefore(shape.element, prevShape.element);
-      this.saveHistory();
-      this.onChangeCallback();
-    }
-  }
-
-  /**
-   * Drag-and-drop reorder/reparent from the Layers panel.
-   *
-   * The Layers panel lists shapes top-to-bottom in REVERSE paint order (top of
-   * the list = top of the z-stack = last in the DOM). `position` is expressed
-   * in that visual order: 'before' = above the target in the panel (so later in
-   * the DOM), 'after' = below it, 'inside' = into the target group.
-   *
-   * We mutate the live DOM then rebuild the model from it, so the two never
-   * drift. When the parent changes, the element's transform is recomputed so it
-   * keeps its on-screen position (no jump when dropping into a moved group).
-   */
-  moveShape(draggedId: string, targetId: string, position: 'before' | 'after' | 'inside'): boolean {
-    if (draggedId === targetId) return false;
-    const dragged = this.findShapeById(draggedId);
-    const target = this.findShapeById(targetId);
-    if (!dragged || !target) return false;
-
-    const dEl = dragged.element;
-    const tEl = target.element;
-    // Never drop a group into its own subtree.
-    if (dEl === tEl || dEl.contains(tEl)) return false;
-
-    const oldParent = dEl.parentNode;
-    const oldScreen = (dEl as unknown as SVGGraphicsElement).getScreenCTM();
-
-    if (position === 'inside') {
-      if (target.type !== 'group') return false;
-      tEl.appendChild(dEl); // top of the group's stack
-    } else {
-      const parent = tEl.parentNode;
-      if (!parent) return false;
-      // Panel order is reversed vs. the DOM, so 'before' goes after the target.
-      parent.insertBefore(dEl, position === 'before' ? tEl.nextSibling : tEl);
-    }
-
-    // Preserve on-screen position when the parent changed (reparent).
-    const newParent = dEl.parentNode;
-    if (newParent !== oldParent && oldScreen) {
-      const pScreen = (newParent as unknown as SVGGraphicsElement).getScreenCTM?.();
-      if (pScreen) {
-        const m = pScreen.inverse().multiply(oldScreen);
-        const r = (v: number) => Math.round(v * 1e6) / 1e6;
-        dEl.setAttribute('transform', `matrix(${r(m.a)} ${r(m.b)} ${r(m.c)} ${r(m.d)} ${r(m.e)} ${r(m.f)})`);
-      }
-    }
-
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = [draggedId];
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
-
-  /**
-   * Wrap `targetId` and `draggedId` in a NEW group, created at the target's
-   * position/parent. Used when dragging one layer directly onto another (the
-   * middle of a non-group row). The dragged element keeps its on-screen
-   * position; the target does too (the new group is identity and sits where
-   * the target was).
-   */
-  groupShapes(draggedId: string, targetId: string): boolean {
-    if (draggedId === targetId) return false;
-    const dragged = this.findShapeById(draggedId);
-    const target = this.findShapeById(targetId);
-    if (!dragged || !target) return false;
-
-    const dEl = dragged.element;
-    const tEl = target.element;
-    if (dEl === tEl || dEl.contains(tEl) || tEl.contains(dEl)) return false;
-    const parent = tEl.parentNode;
-    if (!parent) return false;
-
-    const dOldParent = dEl.parentNode;
-    const dOldScreen = (dEl as unknown as SVGGraphicsElement).getScreenCTM();
-
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    const id = this.nextId();
-    g.id = id;
-    g.setAttribute('data-name', `Group ${id.replace('shape-', '#')}`);
-    parent.insertBefore(g, tEl); // take the target's slot in the stack
-    g.appendChild(tEl);          // target on the bottom
-    g.appendChild(dEl);          // dragged on top
-
-    // The dragged element's parent changed — compensate so it doesn't jump.
-    if (dOldParent !== g && dOldScreen) {
-      const pScreen = (g as unknown as SVGGraphicsElement).getScreenCTM?.();
-      if (pScreen) {
-        const m = pScreen.inverse().multiply(dOldScreen);
-        const r = (v: number) => Math.round(v * 1e6) / 1e6;
-        dEl.setAttribute('transform', `matrix(${r(m.a)} ${r(m.b)} ${r(m.c)} ${r(m.d)} ${r(m.e)} ${r(m.f)})`);
-      }
-    }
-
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = [id];
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
-
-  /** Re-append top-level shape elements so DOM paint order matches `this.shapes`. */
-  private syncDomOrder(): void {
-    for (const s of this.shapes) this.drawingLayer.appendChild(s.element);
-  }
-
-  /** Move the selected top-level shapes to the top of the z-order. */
-  bringToFront(): void {
-    const ids = new Set(this.selectedShapeIds);
-    const selected = this.shapes.filter(s => ids.has(s.id));
-    if (selected.length === 0) return;
-    const rest = this.shapes.filter(s => !ids.has(s.id));
-    this.shapes = [...rest, ...selected];
-    this.syncDomOrder();
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Move the selected top-level shapes to the bottom of the z-order. */
-  sendToBack(): void {
-    const ids = new Set(this.selectedShapeIds);
-    const selected = this.shapes.filter(s => ids.has(s.id));
-    if (selected.length === 0) return;
-    const rest = this.shapes.filter(s => !ids.has(s.id));
-    this.shapes = [...selected, ...rest];
-    this.syncDomOrder();
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  duplicateShape(id: string): void {
-    const newId = this.cloneShapeById(id);
-    if (!newId) return;
-    this.rebuildShapesFromDOM(); // clone was inserted into the DOM (maybe nested)
-    this.selectedShapeIds = [newId];
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /**
-   * Duplicate the selection in one undo step, Figma-style "step and repeat": the
-   * copy is offset by {@link stepOffset}. After you nudge a fresh duplicate into
-   * place (recorded via {@link notifyMovedSelection}), repeating ⌘D keeps applying
-   * that same offset, so you build an evenly-spaced array by pressing ⌘D, move,
-   * ⌘D, ⌘D, ⌘D…
-   */
-  duplicateSelected(): void {
-    const ids = [...this.selectedShapeIds];
-    if (ids.length === 0) return;
-    const off = this.stepOffset ?? { dx: 10, dy: 10 };
-    const newIds: string[] = [];
-    for (const id of ids) {
-      const newId = this.cloneShapeById(id, off.dx, off.dy);
-      if (newId) newIds.push(newId);
-    }
-    if (newIds.length === 0) return;
-    this.rebuildShapesFromDOM(); // clones inserted into the DOM (maybe nested)
-    this.selectedShapeIds = newIds;
-    // Remember this copy and the step, so a move of *this* copy refines the offset
-    // and further ⌘D presses continue the pattern.
-    this.lastDuplicateIds = [...newIds];
-    this.stepOffset = off;
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /**
-   * Told by the Select tool when a drag-move finishes. If it moved exactly the
-   * shapes produced by the last duplicate, that delta becomes the step-and-repeat
-   * offset; any other move breaks the chain so the next ⌘D uses the default.
-   */
-  notifyMovedSelection(dx: number, dy: number): void {
-    const moved = [...this.selectedShapeIds].sort().join(',');
-    const lastDup = [...this.lastDuplicateIds].sort().join(',');
-    if (lastDup && moved === lastDup && (dx !== 0 || dy !== 0)) {
-      this.stepOffset = { dx, dy };
-    } else {
-      this.lastDuplicateIds = [];
-      this.stepOffset = null;
-    }
-  }
-
-  /**
-   * Clone a shape into the drawing layer offset by 10px, returning the new id.
-   * Does NOT record history / select / notify — callers batch those so a
-   * multi-duplicate is one undo step.
-   */
-  private cloneShapeById(id: string, dx = 10, dy = 10): string | null {
-    const shape = this.findShapeById(id); // resolve anywhere in the tree (incl. frames)
-    if (!shape) return null;
-    const newEl = shape.element.cloneNode(true) as SVGElement;
-    const newId = this.nextId();
-    newEl.id = newId;
-    // Re-id descendants so a duplicated container doesn't share child ids with the
-    // original (which corrupts findShapeById / idCounter after a history rebuild).
-    this.reIdGroupChildren(newEl);
-    // Offset the copy uniformly (works for every shape type, incl. paths/groups),
-    // which also drives Figma-style step-and-repeat via the recorded stepOffset.
-    this.offsetElement(newEl, dx, dy);
-    newEl.setAttribute('data-name', `${shape.type} ${newId.replace('shape-', '#')}`);
-    // Insert next to the original, in its OWN parent (stay inside the same frame).
-    const parent = (shape.element.parentElement as SVGElement | null) ?? this.drawingLayer;
-    parent.insertBefore(newEl, shape.element.nextSibling);
-    return newId;
-  }
+  // Layer-panel operations are owned by LayerManager; these delegate.
+  toggleVisibility(id: string): void { this.layerMgr.toggleVisibility(id); }
+  toggleLock(id: string): void { this.layerMgr.toggleLock(id); }
+  showAll(): void { this.layerMgr.showAll(); }
+  unlockAll(): void { this.layerMgr.unlockAll(); }
+  moveShapeUp(id: string): void { this.layerMgr.moveShapeUp(id); }
+  moveShapeDown(id: string): void { this.layerMgr.moveShapeDown(id); }
+  moveShape(draggedId: string, targetId: string, position: 'before' | 'after' | 'inside'): boolean { return this.layerMgr.moveShape(draggedId, targetId, position); }
+  groupShapes(draggedId: string, targetId: string): boolean { return this.layerMgr.groupShapes(draggedId, targetId); }
+  bringToFront(): void { this.layerMgr.bringToFront(); }
+  sendToBack(): void { this.layerMgr.sendToBack(); }
+  duplicateShape(id: string): void { this.layerMgr.duplicateShape(id); }
+  duplicateSelected(): void { this.layerMgr.duplicateSelected(); }
+  notifyMovedSelection(dx: number, dy: number): void { this.layerMgr.notifyMovedSelection(dx, dy); }
 
   // ---- Clipboard ----
   // Cut/copy/paste live in core/clipboard.ts; AppState owns the manager and the
