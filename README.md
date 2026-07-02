@@ -119,7 +119,6 @@ src/
     ├── layers.ts        # Layers panel
     ├── color-picker.ts  # HSL/RGB color picker
     ├── symbols-panel.ts # Symbol library
-    ├── artboards-panel.ts
     ├── export.ts        # SVG/PNG/JPG export
     ├── export-dialog.ts # Multi-artboard export
     ├── project-file.ts  # Save/load projects
