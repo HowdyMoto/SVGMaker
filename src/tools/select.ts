@@ -298,8 +298,18 @@ export class SelectTool extends BaseTool {
       }
       // Smart-guide snapping of the dragged edge(s). Skipped under Shift, where
       // it would fight the locked aspect ratio; bypassed while ⌘/Ctrl is held.
+      const gridR = !(e.metaKey || e.ctrlKey) && !e.shiftKey ? this.state.activeGridSnap() : null;
       const snapResize = this.state.snapEnabled && !(e.metaKey || e.ctrlKey) && !e.shiftKey;
-      if (snapResize && this.snapTargets) {
+      if (gridR) {
+        // Quantize the moving edge(s) of the resize to the frame grid.
+        const h = this.resizeHandle, o = this.resizeOrigBBox;
+        const q = (v: number, base: number) => base + Math.round((v - base) / gridR.step) * gridR.step;
+        if (h.includes('e')) { const edge = o.x + o.width + dx; dx += q(edge, gridR.ox) - edge; }
+        else if (h.includes('w')) { const edge = o.x + dx; dx += q(edge, gridR.ox) - edge; }
+        if (h.includes('s')) { const edge = o.y + o.height + dy; dy += q(edge, gridR.oy) - edge; }
+        else if (h.includes('n')) { const edge = o.y + dy; dy += q(edge, gridR.oy) - edge; }
+        clearSnapGuides(this.guidesLayer);
+      } else if (snapResize && this.snapTargets) {
         const r = computeResizeSnap(
           this.resizeOrigBBox, dx, dy, this.resizeHandle,
           this.snapTargets, SNAP_PX / this.canvas.getZoom(),
@@ -327,9 +337,16 @@ export class SelectTool extends BaseTool {
       const rawDy = pt.y - this.dragStartPt.y;
       let totalDx = rawDx, totalDy = rawDy;
 
-      // Snap on by default; hold ⌘/Ctrl to bypass, off via View → Smart Guides.
+      // Grid snap (active frame's grid) takes precedence: it quantizes the
+      // selection's top-left to the grid continuously. Bypassed with ⌘/Ctrl.
+      const grid = !(e.metaKey || e.ctrlKey) ? this.state.activeGridSnap() : null;
       const snapOn = this.state.snapEnabled && !(e.metaKey || e.ctrlKey);
-      if (snapOn && this.dragStartBBox && this.snapTargets) {
+      if (grid && this.dragStartBBox) {
+        const q = (v: number, o: number) => o + Math.round((v - o) / grid.step) * grid.step;
+        totalDx = q(this.dragStartBBox.x + rawDx, grid.ox) - this.dragStartBBox.x;
+        totalDy = q(this.dragStartBBox.y + rawDy, grid.oy) - this.dragStartBBox.y;
+        clearSnapGuides(this.guidesLayer);
+      } else if (snapOn && this.dragStartBBox && this.snapTargets) {
         const moving: BBox = {
           x: this.dragStartBBox.x + rawDx,
           y: this.dragStartBBox.y + rawDy,

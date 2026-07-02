@@ -912,8 +912,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   flex: 1;
   position: relative; /* anchor for the floating toolbar */
   display: grid;
-  grid-template-columns: var(--left-panel-w) var(--ruler-size) 1fr var(--panel-w);
-  grid-template-rows: var(--ruler-size) 1fr;
+  grid-template-columns: var(--left-panel-w) 1fr var(--panel-w);
+  grid-template-rows: 1fr;
   overflow: hidden;
 }
 
@@ -1133,39 +1133,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   color: var(--ai-text);
 }
 
-/* ============ RULERS ============ */
-#ruler-corner {
-  grid-column: 2;
-  grid-row: 1;
-  background: var(--ai-panel);
-  border-right: 1px solid var(--ai-border);
-  border-bottom: 1px solid var(--ai-border);
-}
-
-#ruler-h {
-  grid-column: 3;
-  grid-row: 1;
-  background: var(--ai-panel);
-  border-bottom: 1px solid var(--ai-border);
-  display: block;
-  width: 100%;
-  height: var(--ruler-size);
-}
-
-#ruler-v {
-  grid-column: 2;
-  grid-row: 2;
-  background: var(--ai-panel);
-  border-right: 1px solid var(--ai-border);
-  display: block;
-  width: var(--ruler-size);
-  height: 100%;
-}
-
 /* ============ CANVAS ============ */
 #canvas-area {
-  grid-column: 3;
-  grid-row: 2;
+  grid-column: 2;
+  grid-row: 1;
   position: relative;
   overflow: hidden;
   background: var(--ai-bg);
@@ -1259,7 +1230,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 
 /* ============ RIGHT PANELS ============ */
 #panels {
-  grid-column: 4;
+  grid-column: 3;
   grid-row: 1 / -1;
   background: var(--ai-panel-darker);
   border-left: 1px solid var(--ai-border);
@@ -1702,6 +1673,56 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   padding: 6px 2px;
   text-align: center;
 }
+
+/* Frame panel (grid + rulers) */
+.fp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.fp-grid-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.fp-grid-head .appearance-label { margin-right: auto; }
+.fp-grid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.fp-mini { font-size: 11px; color: var(--ai-text-dim); }
+.fp-grid-row .ap-color {
+  width: 22px; height: 20px; padding: 0;
+  border: 1px solid var(--ai-border); border-radius: 3px;
+  background: none; cursor: pointer; flex: 0 0 auto;
+}
+.fp-toggle {
+  min-width: 40px;
+  padding: 3px 10px;
+  font-size: 11px; font-weight: 550;
+  border-radius: 6px; cursor: pointer;
+  background: var(--ai-btn); color: var(--ai-text-dim);
+  border: 1px solid transparent;
+}
+.fp-toggle.active { background: var(--ai-accent); color: #fff; }
+.fp-vis {
+  width: 24px; height: 22px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 5px;
+  background: var(--ai-btn); color: var(--ai-text-dim); cursor: pointer;
+}
+.fp-vis.active { color: var(--ai-text-bright); }
+.fp-icon {
+  width: 22px; height: 22px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 5px;
+  background: transparent; color: var(--ai-text-dim); cursor: pointer;
+}
+.fp-icon:hover { background: var(--ai-danger); color: #fff; }
 
 /* Width (variable-width stroke) panel */
 .width-row {
