@@ -48,6 +48,7 @@ export function getShapeIcon(type: string): string {
     case 'image': return '<svg viewBox="0 0 16 16" width="12" height="12"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><polyline points="2,12 6,8 9,10 12,6 14,9" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
     case 'use': return '<svg viewBox="0 0 16 16" width="12" height="12"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
     case 'boolean': return '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="6" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="10" cy="8" r="4.5" fill="currentColor" fill-opacity="0.35" stroke="currentColor" stroke-width="1.2"/></svg>';
+    case 'appearance': return '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="6" cy="6" r="4" fill="currentColor" fill-opacity="0.35"/><circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
     default: return '';
   }
 }
