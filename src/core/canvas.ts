@@ -31,6 +31,9 @@ export class CanvasController {
   private setupEvents(): void {
     this.svgCanvas.addEventListener('wheel', (e: WheelEvent) => {
       e.preventDefault();
+      // Ignore the wheel while middle-drag panning — some mice emit stray wheel
+      // deltas mid-pan, which caused jarring zoom jumps.
+      if (this.isPanning) return;
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       this.setZoom(this.zoom * delta, { x: e.clientX, y: e.clientY });
     }, { passive: false });
