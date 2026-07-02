@@ -110,7 +110,7 @@ export class ArtboardTool extends BaseTool {
       if (h < 20) h = 20;
       this.state.updateArtboard(this.resizingAb.id, {
         x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h),
-      });
+      }, { keepChildrenFixed: true }); // resizing must not drag content along
     }
   }
 

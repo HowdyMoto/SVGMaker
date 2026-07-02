@@ -1,7 +1,7 @@
 import type { AppState } from './state';
 import type { CanvasController, ViewState } from './canvas';
 import type { HistorySnapshot } from './history';
-import { serializeDocumentSVG, loadDocumentSVG, setProjectName } from '../ui/project-file';
+import { serializeDocumentSVG, loadDocumentSVG, setProjectName, getCurrentFileHandle, setCurrentFileHandle } from '../ui/project-file';
 import { getCloudDoc, setCloudDoc, clearCloudDoc } from '../lib/cloud-doc';
 
 /** The cloud-project identity a tab is tethered to (null = a local/blank doc). */
@@ -27,6 +27,9 @@ export interface DocTab {
   /** Which cloud project this tab maps to. Per-tab so autosave never writes one
    *  tab's content to another tab's cloud document. */
   cloudDoc: TabCloudDoc | null;
+  /** Local file handle, per-tab so Save writes to THIS tab's file (not another
+   *  tab's). Not serializable; lives only in the session. */
+  fileHandle: FileSystemFileHandle | null;
 }
 
 export class DocumentManager {
@@ -52,7 +55,7 @@ export class DocumentManager {
   private nextId(): string { return `doc-${++this.counter}`; }
 
   private blankTab(id: string, title: string): DocTab {
-    return { id, title, svg: null, history: null, view: null, selection: [], dirty: false, cloudDoc: null };
+    return { id, title, svg: null, history: null, view: null, selection: [], dirty: false, cloudDoc: null, fileHandle: null };
   }
 
   private saveActiveIntoTab(): void {
@@ -67,6 +70,7 @@ export class DocumentManager {
     // tab and autosave targets the correct document after a switch.
     const cd = getCloudDoc();
     t.cloudDoc = cd.id ? { id: cd.id, name: cd.name ?? '', updatedAt: cd.updatedAt ?? '' } : null;
+    t.fileHandle = getCurrentFileHandle();
   }
 
   private loadTabIntoState(t: DocTab): void {
@@ -79,11 +83,12 @@ export class DocumentManager {
       const sel = t.selection.filter(id => this.state.findShapeById(id));
       if (sel.length) this.state.selectMultiple(sel);
     }
-    // Re-tether the cloud identity to THIS tab's document (after load, which may
-    // have cleared it). Without this, autosave would write here to the previous
-    // tab's cloud row — silent cross-document data loss.
+    // Re-tether cloud + local-file identity to THIS tab's document (after load,
+    // which may have cleared them). Without this, autosave/Save would write here
+    // to the previous tab's cloud row / file — silent cross-document data loss.
     if (t.cloudDoc) setCloudDoc(t.cloudDoc.id, t.cloudDoc.name, t.cloudDoc.updatedAt);
     else clearCloudDoc();
+    setCurrentFileHandle(t.fileHandle);
   }
 
   private currentTitle(): string {

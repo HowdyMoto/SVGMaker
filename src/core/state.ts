@@ -440,7 +440,7 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  updateArtboard(id: string, updates: Partial<Omit<Artboard, 'id'>>): void {
+  updateArtboard(id: string, updates: Partial<Omit<Artboard, 'id'>>, opts: { keepChildrenFixed?: boolean } = {}): void {
     const s = this.frameShapeById(id);
     if (!s) return;
     const el = s.element;
@@ -448,6 +448,18 @@ export class AppState {
     if (updates.name != null) { el.setAttribute('data-name', updates.name); s.name = updates.name; }
     const nx = updates.x ?? cur.x, ny = updates.y ?? cur.y;
     if (updates.x != null || updates.y != null) {
+      // When resizing from the top/left, the origin moves but content should stay
+      // world-fixed — compensate the child geometry by the inverse origin delta.
+      // (For a plain move, keepChildrenFixed is false so content travels with the frame.)
+      if (opts.keepChildrenFixed) {
+        const ddx = nx - cur.x, ddy = ny - cur.y;
+        if (ddx || ddy) {
+          for (const child of Array.from(el.children) as SVGElement[]) {
+            if (child.tagName.toLowerCase() === 'clippath' || child.classList.contains('frame-bg')) continue;
+            this.offsetElement(child, -ddx, -ddy);
+          }
+        }
+      }
       if (nx !== 0 || ny !== 0) el.setAttribute('transform', `translate(${nx} ${ny})`);
       else el.removeAttribute('transform');
     }

@@ -28,6 +28,12 @@ const PICKER_TYPES: FilePickerType[] = [
 /** Handle of the file currently being edited, so Save can write in place. */
 let currentHandle: FileSystemFileHandle | null = null;
 
+/** The active document's local file handle (null = never saved locally). Exposed
+ *  so the document tab manager can make it per-tab: without swapping this on tab
+ *  switch, a Save in one tab would write to another tab's file. */
+export function getCurrentFileHandle(): FileSystemFileHandle | null { return currentHandle; }
+export function setCurrentFileHandle(h: FileSystemFileHandle | null): void { currentHandle = h; }
+
 /** Update the title bar / document title with the current file name. */
 export function setProjectName(name: string | null): void {
   const label = document.getElementById('project-name');
