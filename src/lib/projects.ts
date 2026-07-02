@@ -100,9 +100,6 @@ export async function listPublicProjects(limit = 60): Promise<CloudProjectMeta[]
   }));
 }
 
-/** Back-compat alias — the original single list (now: the user's own boards). */
-export const listCloudProjects = listMyProjects;
-
 // ---- Visibility & category ----
 
 export async function setProjectVisibility(id: string, visibility: ProjectVisibility): Promise<void> {

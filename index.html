@@ -38,7 +38,7 @@
     <!-- Menu Bar -->
     <header id="menu-bar">
       <nav class="menu-items">
-        <div class="menu-dropdown" data-menu="file">
+        <div class="menu-dropdown">
           <span class="menu-trigger">File</span>
           <div class="menu-panel">
             <button data-action="file.new">New</button>
@@ -62,7 +62,7 @@
             <button data-action="export.bake-transforms">Bake Transforms on Export</button>
           </div>
         </div>
-        <div class="menu-dropdown" data-menu="edit">
+        <div class="menu-dropdown">
           <span class="menu-trigger">Edit</span>
           <div class="menu-panel">
             <button data-action="edit.undo">Undo</button>
@@ -79,7 +79,7 @@
             <button data-action="edit.deselect">Deselect</button>
           </div>
         </div>
-        <div class="menu-dropdown" data-menu="object">
+        <div class="menu-dropdown">
           <span class="menu-trigger">Object</span>
           <div class="menu-panel">
             <button data-action="object.group">Group</button>
@@ -103,7 +103,7 @@
             <button data-action="object.show-all">Show All</button>
           </div>
         </div>
-        <div class="menu-dropdown" data-menu="path">
+        <div class="menu-dropdown">
           <span class="menu-trigger">Path</span>
           <div class="menu-panel">
             <button data-action="path.unite">Unite</button>
@@ -119,7 +119,7 @@
             <button data-action="path.flatten">Flatten Compound Shape</button>
           </div>
         </div>
-        <div class="menu-dropdown" data-menu="view">
+        <div class="menu-dropdown">
           <span class="menu-trigger">View</span>
           <div class="menu-panel">
             <button data-action="view.zoom-in">Zoom In</button>
@@ -134,7 +134,7 @@
             <button data-action="view.toggle-rulers">Show Frame Rulers</button>
           </div>
         </div>
-        <div class="menu-dropdown" data-menu="help">
+        <div class="menu-dropdown">
           <span class="menu-trigger">Help</span>
           <div class="menu-panel">
             <button data-action="app.command-palette">Command Palette...</button>
@@ -161,7 +161,7 @@
       <!-- Left panel (Figma-style): Layers, full height -->
       <aside id="left-panel">
         <div class="panel" id="panel-layers">
-          <div class="panel-header" data-panel="layers">
+          <div class="panel-header">
             <span>Layers</span>
             <button class="panel-add" id="btn-layer-add" title="New Layer (empty group)">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>
@@ -337,7 +337,7 @@
       <aside id="panels">
         <!-- Properties / Transform -->
         <div class="panel" id="panel-properties">
-          <div class="panel-header" data-panel="properties">
+          <div class="panel-header">
             <span>Transform</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -368,7 +368,7 @@
 
         <!-- Frame (grid + rulers; shown when a Frame is selected) -->
         <div class="panel" id="panel-frame" style="display:none">
-          <div class="panel-header" data-panel="frame">
+          <div class="panel-header">
             <span>Frame</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -403,7 +403,7 @@
 
         <!-- Appearance -->
         <div class="panel" id="panel-appearance">
-          <div class="panel-header" data-panel="appearance">
+          <div class="panel-header">
             <span>Appearance</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -412,7 +412,7 @@
             <div class="appearance-group" id="fill-group">
               <div class="appearance-row">
                 <button class="appearance-toggle" id="prop-fill-none" title="Toggle Fill on/off">Fill</button>
-                <div class="appearance-color-btn" id="prop-fill-btn" title="Click to pick fill color" data-target="fill">
+                <div class="appearance-color-btn" id="prop-fill-btn" title="Click to pick fill color">
                   <div class="appearance-color-inner" id="prop-fill-preview" style="background:#FFFFFF"></div>
                 </div>
               </div>
@@ -429,7 +429,7 @@
             <div class="appearance-group" id="stroke-group">
               <div class="appearance-row">
                 <button class="appearance-toggle" id="prop-stroke-none" title="Toggle Stroke on/off">Stroke</button>
-                <div class="appearance-color-btn" id="prop-stroke-btn" title="Click to pick stroke color" data-target="stroke">
+                <div class="appearance-color-btn" id="prop-stroke-btn" title="Click to pick stroke color">
                   <div class="appearance-color-inner" id="prop-stroke-preview" style="background:#000000"></div>
                 </div>
                 <input type="number" id="prop-stroke-width" value="1" min="0" max="200" step="0.5" class="appearance-weight" title="Stroke Weight" />
@@ -585,7 +585,7 @@
 
         <!-- Fills & Strokes (stacked appearance) -->
         <div class="panel" id="panel-fills-strokes">
-          <div class="panel-header" data-panel="fills-strokes">
+          <div class="panel-header">
             <span>Fills &amp; Strokes</span>
             <div class="ap-actions">
               <button id="ap-add-fill" class="ap-add-btn" title="Add a fill layer">+ Fill</button>
@@ -601,7 +601,7 @@
 
         <!-- Width (variable-width stroke profiles) -->
         <div class="panel" id="panel-width">
-          <div class="panel-header" data-panel="width">
+          <div class="panel-header">
             <span>Width</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -626,7 +626,7 @@
 
         <!-- Swatches -->
         <div class="panel" id="panel-swatches">
-          <div class="panel-header" data-panel="swatches">
+          <div class="panel-header">
             <span>Swatches</span>
             <button class="panel-add" id="swatch-add" title="Add current fill colour to swatches">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>
@@ -638,7 +638,7 @@
 
         <!-- Align -->
         <div class="panel" id="panel-align">
-          <div class="panel-header" data-panel="align">
+          <div class="panel-header">
             <span>Align</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -674,7 +674,7 @@
 
         <!-- Pathfinder (boolean ops) -->
         <div class="panel" id="panel-pathfinder">
-          <div class="panel-header" data-panel="pathfinder">
+          <div class="panel-header">
             <span>Pathfinder</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -706,7 +706,7 @@
 
         <!-- Type (shown only when text selected) -->
         <div class="panel" id="panel-type" style="display:none">
-          <div class="panel-header" data-panel="type">
+          <div class="panel-header">
             <span>Character</span>
             <button class="panel-collapse">&#x25BC;</button>
           </div>
@@ -744,7 +744,7 @@
 
         <!-- Symbols -->
         <div class="panel" id="panel-symbols">
-          <div class="panel-header" data-panel="symbols">
+          <div class="panel-header">
             <span>Symbols</span>
             <button class="panel-add" id="btn-create-symbol" title="Create Symbol from Selection">&#x2b;</button>
             <button class="panel-collapse">&#x25BC;</button>

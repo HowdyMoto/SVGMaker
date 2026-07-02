@@ -16,9 +16,6 @@ import { transformPathData } from './path-model';
 
 export type BooleanOp = 'unite' | 'subtract' | 'intersect' | 'exclude' | 'divide';
 
-/** Single-output ops produce one path; 'divide' produces many. */
-export const SINGLE_OUTPUT_OPS: BooleanOp[] = ['unite', 'subtract', 'intersect', 'exclude'];
-
 // ---- Engine lifecycle (lazy Paper.js) ----
 
 // Paper has no bundled ESM types we want to lean on here; treat the scope loosely.
@@ -66,10 +63,6 @@ export async function ensureOffsetEngine(): Promise<void> {
     });
   }
   await offsetLoading;
-}
-
-export function offsetEngineReady(): boolean {
-  return !!paper && !!paperOffset;
 }
 
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
