@@ -10,7 +10,7 @@ import { SymbolRegistry, type SymbolHost } from './symbol-registry';
 import { EffectsManager, type EffectsHost } from './effects';
 import { MarkersManager, type MarkersHost } from './markers';
 import { AppearanceManager, type AppearanceHost } from './appearance';
-import { CARRY_ATTRS } from './wrapper-attrs';
+import { WidthStrokeManager, type WidthStrokeHost } from './width-stroke';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
@@ -19,7 +19,7 @@ import {
   stripBooleanOperands, localPathData,
   ensureOffsetEngine, offsetPathData, outlineStrokeData,
 } from './boolean';
-import { variableWidthOutline, type WidthPoint } from './variable-width';
+import type { WidthPoint } from './variable-width';
 
 /**
  * Built-in editor chrome that lives in the canvas <defs> (the grid background
@@ -164,6 +164,7 @@ export class AppState {
   private effects: EffectsManager;
   private markers: MarkersManager;
   private appearanceMgr: AppearanceManager;
+  private widthMgr: WidthStrokeManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -253,6 +254,15 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.appearanceMgr = new AppearanceManager(appearanceHost);
+    const widthHost: WidthStrokeHost = {
+      findShape: (id) => this.findShapeById(id),
+      applyEffectFilter: (el) => this.effects.applyFilter(el),
+      rebuild: () => this.rebuildShapesFromDOM(),
+      setSelection: (ids) => { this.selectedShapeIds = ids; },
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.widthMgr = new WidthStrokeManager(widthHost);
     // Create the default frame ("Frame 1"). Frames are real <g data-frame>
     // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
     // artboards cache from them.
@@ -2084,139 +2094,11 @@ export class AppState {
   // colour live on the wrapper, so a plain re-render needs nothing but the snapshot;
   // regeneration only runs when the profile changes (preset, or a Width-tool drag).
 
-  private readonly WIDTH_MIN = 0.01;
-
-  /** The width model for an object, or null if it isn't a width object. */
-  getWidthProfile(id: string): { centerline: string; base: number; stroke: string; points: WidthPoint[] } | null {
-    const shape = this.findShapeById(id);
-    if (!shape || shape.type !== 'width') return null;
-    const g = shape.element;
-    const src = g.querySelector(':scope > [data-width-src]') as SVGElement | null;
-    let points: WidthPoint[] = [];
-    try { const raw = JSON.parse(g.getAttribute('data-width-profile') || '[]'); if (Array.isArray(raw)) points = raw; } catch { /* keep [] */ }
-    return {
-      centerline: src?.getAttribute('d') ?? '',
-      base: parseFloat(g.getAttribute('data-width-base') || '1') || 1,
-      stroke: g.getAttribute('data-width-stroke') || '#000000',
-      points,
-    };
-  }
-
-  /** True when a shape can take a width profile (has a strokeable centerline). */
-  canApplyWidth(id: string): boolean {
-    const shape = this.findShapeById(id);
-    if (!shape) return false;
-    if (shape.type === 'width') return true;
-    return ['path', 'line', 'polyline', 'polygon'].includes(shape.type);
-  }
-
-  private regenerateWidth(g: SVGElement): void {
-    const src = g.querySelector(':scope > [data-width-src]') as SVGElement | null;
-    if (!src) return;
-    const centerline = src.getAttribute('d') ?? '';
-    const base = parseFloat(g.getAttribute('data-width-base') || '1') || 1;
-    let points: WidthPoint[] = [];
-    try { const raw = JSON.parse(g.getAttribute('data-width-profile') || '[]'); if (Array.isArray(raw)) points = raw; } catch { /* [] */ }
-    const outlineD = variableWidthOutline(centerline, points, base);
-    let render = g.querySelector(':scope > [data-width-render]') as SVGElement | null;
-    if (!render) {
-      render = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      render.setAttribute('data-width-render', '');
-      g.appendChild(render);
-    }
-    render.setAttribute('d', outlineD);
-    render.setAttribute('fill', g.getAttribute('data-width-stroke') || '#000000');
-    render.setAttribute('fill-rule', 'nonzero');
-    render.setAttribute('stroke', 'none');
-    // Keep the render on top of the (filled) centerline, matching stroke-over-fill.
-    g.appendChild(render);
-    // Seed representative paint so the panel / export see the stroke colour.
-    g.setAttribute('fill', g.getAttribute('data-width-stroke') || '#000000');
-    g.setAttribute('stroke', 'none');
-  }
-
-  /** Wrap a plain strokeable shape into a `<g data-width>` in place. */
-  private wrapWidth(shape: ShapeData, base: number): SVGElement {
-    const el = shape.element;
-    const SVG = 'http://www.w3.org/2000/svg';
-    const centerline = shape.type === 'path' ? (el.getAttribute('d') ?? '') : localPathData(el);
-    const stroke = el.getAttribute('stroke');
-    const strokeColor = (stroke && stroke !== 'none') ? stroke : (el.getAttribute('fill') || '#000000');
-
-    const g = document.createElementNS(SVG, 'g');
-    g.id = el.id;
-    g.setAttribute('data-width', '');
-    g.setAttribute('data-width-base', String(base));
-    g.setAttribute('data-width-stroke', strokeColor);
-    for (const a of CARRY_ATTRS) {
-      const v = el.getAttribute(a);
-      if (v != null) { g.setAttribute(a, v); el.removeAttribute(a); }
-    }
-    if (el.style.mixBlendMode) { g.style.mixBlendMode = el.style.mixBlendMode; el.style.removeProperty('mix-blend-mode'); }
-    if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
-
-    // The centerline keeps the object's fill (rendered under the stroke outline),
-    // becomes a plain <path> of the centerline geometry, and loses its own stroke.
-    const srcPath = document.createElementNS(SVG, 'path');
-    srcPath.setAttribute('data-width-src', '');
-    srcPath.setAttribute('d', centerline);
-    srcPath.setAttribute('fill', el.getAttribute('fill') || 'none');
-    const fo = el.getAttribute('fill-opacity'); if (fo) srcPath.setAttribute('fill-opacity', fo);
-    srcPath.setAttribute('stroke', 'none');
-
-    el.replaceWith(g);
-    g.appendChild(srcPath);
-    if (g.hasAttribute('data-fx-blur') || g.hasAttribute('data-fx-shadow')) this.effects.applyFilter(g);
-    return g;
-  }
-
-  /** Collapse a width object back to a plain `<path>` centerline (release). */
-  clearWidthProfile(id: string): void {
-    const shape = this.findShapeById(id);
-    if (!shape || shape.type !== 'width') return;
-    const g = shape.element;
-    const model = this.getWidthProfile(id)!;
-    const SVG = 'http://www.w3.org/2000/svg';
-    const path = document.createElementNS(SVG, 'path');
-    path.id = id;
-    path.setAttribute('d', model.centerline);
-    const src = g.querySelector(':scope > [data-width-src]') as SVGElement | null;
-    path.setAttribute('fill', src?.getAttribute('fill') || 'none');
-    const fo = src?.getAttribute('fill-opacity'); if (fo) path.setAttribute('fill-opacity', fo);
-    path.setAttribute('stroke', model.stroke);
-    path.setAttribute('stroke-width', String(model.base));
-    for (const a of CARRY_ATTRS) { const v = g.getAttribute(a); if (v != null) path.setAttribute(a, v); }
-    if (g.style.mixBlendMode) path.style.mixBlendMode = g.style.mixBlendMode;
-    g.replaceWith(path);
-    if (path.hasAttribute('data-fx-blur') || path.hasAttribute('data-fx-shadow')) this.effects.applyFilter(path);
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = [id];
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /**
-   * Apply / update a width profile on an object. Wraps a plain shape into a
-   * `<g data-width>` on first use, stores the profile, and regenerates the outline.
-   * `points` are {t (0–1), w (full width)}; pass [] with a base to reset to uniform.
-   * One undo step when `record`.
-   */
-  setWidthProfile(id: string, points: WidthPoint[], base: number, record = true): void {
-    const shape = this.findShapeById(id);
-    if (!shape || !this.canApplyWidth(id)) return;
-    const clean = points
-      .filter(p => isFinite(p.t) && isFinite(p.w))
-      .map(p => ({ t: Math.min(1, Math.max(0, p.t)), w: Math.max(this.WIDTH_MIN, p.w) }))
-      .sort((a, b) => a.t - b.t);
-    const g = shape.type === 'width' ? shape.element : this.wrapWidth(shape, base);
-    g.setAttribute('data-width-base', String(base));
-    g.setAttribute('data-width-profile', JSON.stringify(clean));
-    this.regenerateWidth(g);
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = [id];
-    if (record) this.saveHistory();
-    this.onChangeCallback();
-  }
+  // Variable-width strokes are owned by WidthStrokeManager; these delegate.
+  getWidthProfile(id: string): { centerline: string; base: number; stroke: string; points: WidthPoint[] } | null { return this.widthMgr.get(id); }
+  canApplyWidth(id: string): boolean { return this.widthMgr.canApply(id); }
+  clearWidthProfile(id: string): void { this.widthMgr.clear(id); }
+  setWidthProfile(id: string, points: WidthPoint[], base: number, record = true): void { this.widthMgr.set(id, points, base, record); }
 
   // ---- Type on a path ----
 
