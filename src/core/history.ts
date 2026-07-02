@@ -69,6 +69,11 @@ export class History {
   /** True when there are edits since the last save/open/new. */
   get dirty(): boolean { return this.index !== this.savedIndex; }
 
+  /** A token identifying the current document version. Changes on every edit
+   *  (and undo/redo). Callers snapshot it before an async save and compare after,
+   *  so they only mark clean if nothing changed during the await. */
+  get revision(): number { return this.index; }
+
   /** Mark the current state as the saved baseline (call after save/open/new). */
   markClean(): void { this.savedIndex = this.index; }
 

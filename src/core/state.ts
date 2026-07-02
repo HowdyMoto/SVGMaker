@@ -491,7 +491,12 @@ export class AppState {
       if (!shape || shape.type === 'frame') continue;
       const el = shape.element;
       const curParent = el.parentElement as SVGElement | null;
+      // Only top-level shapes and direct frame-children participate in frame
+      // auto-parenting. A shape nested in a group / clip-group / boolean / etc.
+      // belongs to that container — reparenting it to a frame would rip it out of
+      // its group (and, since its bbox is container-local, at a wrong position).
       const curFrameEl = curParent?.hasAttribute?.('data-frame') ? curParent : null;
+      if (curParent !== this.drawingLayer && !curFrameEl) continue;
       const curOff = curFrameEl ? this.frameWorldOrigin(curFrameEl) : { x: 0, y: 0 };
       let bbox: DOMRect;
       try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
@@ -1162,6 +1167,10 @@ export class AppState {
 
   /** True when there are edits since the last save/open/new. */
   get dirty(): boolean { return this.historyMgr.dirty; }
+
+  /** Document-version token; changes on every edit. Snapshot before an async save
+   *  and compare after, so markClean only runs if nothing changed mid-await. */
+  get revision(): number { return this.historyMgr.revision; }
 
   /** Mark the current state as the saved baseline (call after save/open/new). */
   markClean(): void { this.historyMgr.markClean(); }

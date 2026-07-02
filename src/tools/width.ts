@@ -1,6 +1,7 @@
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
 import { nearestOnPath, pointAtParam, pathLength, type WidthPoint } from '../core/variable-width';
+import { localPathData } from '../core/boolean';
 
 /**
  * Width tool — sculpt a variable-width stroke by dragging on a path (Illustrator's
@@ -35,25 +36,37 @@ export class WidthTool extends BaseTool {
     // Prefer the shape under the cursor; else the current/selected one.
     const hit = this.widthCapableUnder(_e) ?? this.currentId();
     if (!hit) return;
+    const shape = this.state.findShapeById(hit);
+    if (!shape) return;
     this.id = hit;
 
-    const model = this.ensureModel();
-    if (!model) return;
-    const local = this.toLocal(pt, this.groupEl());
-    const near = nearestOnPath(model.centerline, local);
+    // Hit-test against the centerline WITHOUT mutating — a plain path must not be
+    // converted to a width object unless the click actually lands on it.
+    const already = shape.type === 'width';
+    const existingModel = already ? this.state.getWidthProfile(hit) : null;
+    const centerline = already
+      ? (existingModel?.centerline ?? '')
+      : (shape.type === 'path' ? (shape.element.getAttribute('d') ?? '') : localPathData(shape.element));
+    const points: WidthPoint[] = existingModel?.points ?? [];
+
+    const local = this.toLocal(pt, shape.element);
+    const near = nearestOnPath(centerline, local);
     if (!near) return;
     const tolLocal = this.PATH_HIT / this.canvas.getZoom();
 
     // Grab an existing width point if the click is near one; otherwise, if the
     // click is near the path, start a fresh point at that position.
-    const existing = this.nearestExistingPoint(model.points, near.t);
-    if (existing && Math.abs(existing.t - near.t) * pathLength(model.centerline) < this.HANDLE_HIT / this.canvas.getZoom()) {
+    const existing = this.nearestExistingPoint(points, near.t);
+    if (existing && Math.abs(existing.t - near.t) * pathLength(centerline) < this.HANDLE_HIT / this.canvas.getZoom()) {
       this.dragT = existing.t;
-    } else if (near.dist <= tolLocal + (this.currentMaxHalf(model.points))) {
+    } else if (near.dist <= tolLocal + this.currentMaxHalf(points)) {
       this.dragT = near.t;
     } else {
-      return; // click missed the path
+      return; // click missed the path — nothing wrapped, nothing changed
     }
+
+    // Confirmed hit → NOW wrap the plain shape into a width object if needed.
+    if (!this.ensureModel()) return;
     this.dragging = true;
     this.state.interactive = true;
   }

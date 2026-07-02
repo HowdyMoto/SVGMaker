@@ -87,6 +87,7 @@ function escapeHtml(s: string): string {
  */
 export async function saveToCloud(state: AppState): Promise<void> {
   if (!requireSignIn()) return;
+  const rev = state.revision; // the version being uploaded (see markClean guard below)
   const content = serializeDocumentSVG(state);
   const { id, updatedAt } = getCloudDoc();
   try {
@@ -128,8 +129,10 @@ export async function saveToCloud(state: AppState): Promise<void> {
       setProjectName(meta.name);
     }
     conflictBlocked = false; // an explicit Save re-establishes a clean baseline
-    state.markClean();
-    setStatus('saved');
+    // Only clean if nothing changed during the upload; else an edit made mid-save
+    // isn't in the cloud — keep it dirty and let autosave carry it.
+    if (state.revision === rev) { state.markClean(); setStatus('saved'); }
+    else { noteDocumentChanged(); setStatus('idle'); }
   } catch (err) {
     setStatus('error');
     toast('Cloud save failed: ' + (err instanceof Error ? err.message : String(err)));
@@ -157,10 +160,14 @@ async function doAutosave(): Promise<void> {
     // don't clobber it. Autosave is silent/background, so on conflict we just
     // stop and flag it (leaving the doc dirty) — the user resolves it via an
     // explicit Save, which offers to overwrite.
+    const rev = state.revision; // snapshot the version we're uploading
     const newTs = await updateCloudProject(id, serializeDocumentSVG(state), updatedAt ?? undefined);
     setCloudDocUpdatedAt(newTs);
-    state.markClean();
-    setStatus('saved');
+    // Only mark clean if the doc didn't change during the upload — otherwise the
+    // edit made mid-await isn't in the cloud yet; leave it dirty so the already-
+    // scheduled autosave uploads it (else that edit is silently lost).
+    if (state.revision === rev) { state.markClean(); setStatus('saved'); }
+    else { noteDocumentChanged(); setStatus('idle'); }
   } catch (err) {
     if (err instanceof ProjectConflictError) {
       conflictBlocked = true; // pause autosave until an explicit Save resolves it
@@ -204,7 +211,11 @@ const thumbKey = (p: CloudProjectMeta) => `${p.id}:${p.updated_at}`;
  *  with live artwork previews, category filters, sharing, rename, delete. */
 export async function openFromCloud(state: AppState): Promise<void> {
   if (!requireSignIn()) return;
-  const modal = openModal({ id: 'cloud-overlay', ariaLabel: 'Cloud Projects', dialogClass: 'cloud-dialog', closeButton: false });
+  let io: IntersectionObserver | undefined; // assigned below; disconnected on any close
+  const modal = openModal({
+    id: 'cloud-overlay', ariaLabel: 'Cloud Projects', dialogClass: 'cloud-dialog',
+    closeButton: false, onClose: () => io?.disconnect(),
+  });
   if (!modal) return; // singleton already open
 
   modal.dialog.insertAdjacentHTML('beforeend', `
@@ -228,9 +239,9 @@ export async function openFromCloud(state: AppState): Promise<void> {
 
   // Lazy thumbnail loading: fetch each visible card's SVG and paint it, a few at
   // a time so a big library doesn't fire dozens of requests at once.
-  const io = new IntersectionObserver((entries) => {
+  io = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (e.isIntersecting) { io.unobserve(e.target); void loadThumb(e.target as HTMLElement); }
+      if (e.isIntersecting) { io!.unobserve(e.target); void loadThumb(e.target as HTMLElement); }
     }
   }, { root: gridEl, rootMargin: '120px' });
   let active = 0;
