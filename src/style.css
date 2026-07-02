@@ -1236,6 +1236,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   align-items: center;
   gap: 4px;
   flex: 1;
+  /* Without this, the field can't shrink below its number input's intrinsic
+     width (~142px), so two fields per row overflow the panel and get clipped by
+     #panels' overflow-x:hidden. min-width:0 lets flex:1 share the row evenly. */
+  min-width: 0;
 }
 
 .panel-field.full {
