@@ -37,12 +37,18 @@ export class TextTool extends BaseTool {
   // ---- Editing ----
 
   private editExisting(el: SVGTextElement): void {
-    const x = parseFloat(el.getAttribute('x') ?? '0');
-    const y = parseFloat(el.getAttribute('y') ?? '0');
     const fs = parseFloat(el.getAttribute('font-size') ?? '24');
     const lines = this.readLines(el);
+    let anchor: Point;
+    if (el.querySelector('textPath')) {
+      // Text-on-a-path has no x/y — anchor the editor at its rendered bbox.
+      let bb: DOMRect; try { bb = (el as unknown as SVGGraphicsElement).getBBox(); } catch { bb = new DOMRect(); }
+      anchor = { x: bb.x, y: bb.y };
+    } else {
+      anchor = { x: parseFloat(el.getAttribute('x') ?? '0'), y: parseFloat(el.getAttribute('y') ?? '0') - fs * 0.85 };
+    }
     el.style.visibility = 'hidden'; // hide the live text while the overlay is up
-    this.openEditor({ x, y: y - fs * 0.85 }, el, lines.join('\n'));
+    this.openEditor(anchor, el, lines.join('\n'));
   }
 
   private openEditor(topLeft: Point, existing: SVGTextElement | null, value: string): void {
@@ -142,6 +148,8 @@ export class TextTool extends BaseTool {
 
   /** Read a text element's lines from its <tspan>s (or plain textContent). */
   private readLines(el: SVGTextElement): string[] {
+    const tp = el.querySelector('textPath');
+    if (tp) return [tp.textContent ?? '']; // text-on-a-path is a single string
     const tspans = el.querySelectorAll('tspan');
     if (tspans.length) return Array.from(tspans).map(t => t.textContent ?? '');
     return (el.textContent ?? '').split('\n');
@@ -149,6 +157,9 @@ export class TextTool extends BaseTool {
 
   /** Render lines into a text element: single line = textContent, else <tspan>s. */
   private writeLines(el: SVGTextElement, lines: string[], x: number, fontSize: number): void {
+    // Preserve a text-on-a-path: just update the <textPath> string (no tspans).
+    const tp = el.querySelector('textPath');
+    if (tp) { tp.textContent = lines.join(' '); return; }
     while (el.firstChild) el.removeChild(el.firstChild);
     if (lines.length <= 1) { el.textContent = lines[0] ?? ''; return; }
     lines.forEach((line, i) => {
