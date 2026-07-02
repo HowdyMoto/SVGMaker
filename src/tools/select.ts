@@ -8,6 +8,7 @@ import {
   drawSnapGuides, clearSnapGuides, SNAP_PX,
   type SnapTargets,
 } from '../core/snapping';
+import { localBBoxInLayer } from '../core/coords';
 import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 import { hideGroupHint } from '../ui/group-hint';
 
@@ -682,38 +683,13 @@ export class SelectTool extends BaseTool {
 
   private getScreenSpaceBBox(shapes: ShapeData[]): DOMRect {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const svgEl = this.svgCanvas;
-    const drawingLayer = svgEl.querySelector('#drawing-layer') as SVGGraphicsElement | null;
-    const parentCtm = drawingLayer?.getCTM?.();
-
     for (const s of shapes) {
-      const el = s.element as unknown as SVGGraphicsElement;
-      try {
-        const bbox = el.getBBox();
-        const ctm = el.getCTM();
-        if (ctm && parentCtm) {
-          const m = parentCtm.inverse().multiply(ctm);
-          for (const c of [
-            { x: bbox.x, y: bbox.y },
-            { x: bbox.x + bbox.width, y: bbox.y },
-            { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
-            { x: bbox.x, y: bbox.y + bbox.height },
-          ]) {
-            const pt = svgEl.createSVGPoint();
-            pt.x = c.x; pt.y = c.y;
-            const t = pt.matrixTransform(m);
-            minX = Math.min(minX, t.x);
-            minY = Math.min(minY, t.y);
-            maxX = Math.max(maxX, t.x);
-            maxY = Math.max(maxY, t.y);
-          }
-        } else {
-          minX = Math.min(minX, bbox.x);
-          minY = Math.min(minY, bbox.y);
-          maxX = Math.max(maxX, bbox.x + bbox.width);
-          maxY = Math.max(maxY, bbox.y + bbox.height);
-        }
-      } catch { /* skip */ }
+      const bb = localBBoxInLayer(this.svgCanvas, s.element as unknown as SVGGraphicsElement);
+      if (!bb) continue;
+      minX = Math.min(minX, bb.x);
+      minY = Math.min(minY, bb.y);
+      maxX = Math.max(maxX, bb.x + bb.width);
+      maxY = Math.max(maxY, bb.y + bb.height);
     }
     return new DOMRect(minX, minY, maxX - minX, maxY - minY);
   }
