@@ -885,6 +885,7 @@ export class AppState {
   duplicateShape(id: string): void {
     const newId = this.cloneShapeById(id);
     if (!newId) return;
+    this.rebuildShapesFromDOM(); // clone was inserted into the DOM (maybe nested)
     this.selectedShapeIds = [newId];
     this.saveHistory();
     this.onChangeCallback();
@@ -907,6 +908,7 @@ export class AppState {
       if (newId) newIds.push(newId);
     }
     if (newIds.length === 0) return;
+    this.rebuildShapesFromDOM(); // clones inserted into the DOM (maybe nested)
     this.selectedShapeIds = newIds;
     // Remember this copy and the step, so a move of *this* copy refines the offset
     // and further ⌘D presses continue the pattern.
@@ -938,25 +940,21 @@ export class AppState {
    * multi-duplicate is one undo step.
    */
   private cloneShapeById(id: string, dx = 10, dy = 10): string | null {
-    const shape = this.shapes.find(s => s.id === id);
+    const shape = this.findShapeById(id); // resolve anywhere in the tree (incl. frames)
     if (!shape) return null;
     const newEl = shape.element.cloneNode(true) as SVGElement;
     const newId = this.nextId();
     newEl.id = newId;
-    // Re-id descendants so a duplicated group doesn't share child ids with the
+    // Re-id descendants so a duplicated container doesn't share child ids with the
     // original (which corrupts findShapeById / idCounter after a history rebuild).
-    if (shape.type === 'group') this.reIdGroupChildren(newEl);
+    this.reIdGroupChildren(newEl);
     // Offset the copy uniformly (works for every shape type, incl. paths/groups),
     // which also drives Figma-style step-and-repeat via the recorded stepOffset.
     this.offsetElement(newEl, dx, dy);
-    const name = `${shape.type} ${newId.replace('shape-', '#')}`;
-    newEl.setAttribute('data-name', name);
-    this.shapes.push({
-      id: newId, type: shape.type, element: newEl, name,
-      style: { ...shape.style }, visible: true, locked: false,
-      rotation: shape.rotation, symbolId: shape.symbolId,
-    });
-    this.drawingLayer.appendChild(newEl);
+    newEl.setAttribute('data-name', `${shape.type} ${newId.replace('shape-', '#')}`);
+    // Insert next to the original, in its OWN parent (stay inside the same frame).
+    const parent = (shape.element.parentElement as SVGElement | null) ?? this.drawingLayer;
+    parent.insertBefore(newEl, shape.element.nextSibling);
     return newId;
   }
 
@@ -1371,62 +1369,23 @@ export class AppState {
   }
 
   groupSelectedShapes(): void {
-    const ids = this.selectedShapeIds.length > 1
-      ? this.selectedShapeIds
-      : this.shapes.filter(s => this.selectedShapeIds.includes(s.id) || s.id === this.selectedShapeId).map(s => s.id);
-
-    if (ids.length < 2) return;
-
-    const idSet = new Set(ids);
-    const toGroup: ShapeData[] = [];
-    const remaining: ShapeData[] = [];
-    let insertIdx = -1;
-
-    for (let i = 0; i < this.shapes.length; i++) {
-      if (idSet.has(this.shapes[i].id)) {
-        if (insertIdx === -1) insertIdx = remaining.length;
-        toGroup.push(this.shapes[i]);
-      } else {
-        remaining.push(this.shapes[i]);
-      }
-    }
-
+    // Gather selected shapes wherever they live (inside a frame/group or top level).
+    const toGroup = this.selectedInDomOrder();
     if (toGroup.length < 2) return;
 
-
+    const parent = this.commonParentOf(toGroup);
     const gEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const groupId = this.nextId();
     gEl.id = groupId;
-    const groupName = `Group ${groupId.replace('shape-', '#')}`;
-    gEl.setAttribute('data-name', groupName);
+    gEl.setAttribute('data-name', `Group ${groupId.replace('shape-', '#')}`);
 
-    // Move shape elements into the group
-    for (const s of toGroup) {
-      gEl.appendChild(s.element);
-      s.parentId = groupId;
-    }
+    // Insert the group into the operands' parent, then move them in (coords keep,
+    // wrapper has no transform in the same parent space).
+    const insertBefore = toGroup[toGroup.length - 1].element.nextSibling as SVGElement | null;
+    parent.insertBefore(gEl, insertBefore);
+    for (const s of toGroup) gEl.appendChild(s.element);
 
-    // Insert group element into drawing layer at the right position
-    const insertBefore = remaining[insertIdx]?.element ?? null;
-    if (insertBefore) {
-      this.drawingLayer.insertBefore(gEl, insertBefore);
-    } else {
-      this.drawingLayer.appendChild(gEl);
-    }
-
-    const groupShape: ShapeData = {
-      id: groupId,
-      type: 'group',
-      element: gEl,
-      name: groupName,
-      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
-      visible: true,
-      locked: false,
-      children: toGroup,
-    };
-
-    remaining.splice(insertIdx, 0, groupShape);
-    this.shapes = remaining;
+    this.rebuildShapesFromDOM();
     this.selectedShapeIds = [groupId];
     this.saveHistory();
     this.onChangeCallback();
@@ -1502,51 +1461,67 @@ export class AppState {
    * is empty (e.g. intersecting disjoint shapes).
    */
   async booleanSelection(op: BooleanOp, reverse = false): Promise<boolean> {
-    const idSet = new Set(this.selectedShapeIds);
-    const operands: ShapeData[] = [];
-    const remaining: ShapeData[] = [];
-    let insertIdx = -1;
-    for (const s of this.shapes) {
-      if (idSet.has(s.id)) {
-        if (insertIdx === -1) insertIdx = remaining.length;
-        operands.push(s);
-      } else {
-        remaining.push(s);
-      }
-    }
+    // Gather the selected shapes wherever they live in the tree (inside a frame,
+    // a group, or top level), bottom→top in z-order.
+    let operands = this.selectedInDomOrder();
     if (operands.length < 2) return false;
     if (reverse) operands.reverse(); // Subtract "swap": flip which shape is the cutter.
 
     await ensureBooleanEngine();
 
-    const operandDs = this.operandDsInLayerSpace(operands);
+    // Operate in the operands' COMMON PARENT space, so the result lands in the same
+    // container (e.g. the frame) with correct coordinates.
+    const parent = this.commonParentOf(operands);
+    const operandDs = this.operandDsInParentSpace(operands, parent);
     if (!operandDs) return false;
     const resultDs = computeBoolean(operandDs, op);
     if (resultDs.length === 0 || resultDs.every((d) => !d.trim())) return false;
 
-    const insertBefore = remaining[insertIdx]?.element ?? null;
-    const newShape = op === 'divide'
-      ? this.buildDivideGroup(operands, resultDs, insertBefore)
-      : this.buildBooleanShape(op, operands, resultDs[0], insertBefore);
+    const insertBefore = operands[operands.length - 1].element.nextSibling as SVGElement | null;
+    const newId = op === 'divide'
+      ? this.buildDivideGroup(operands, resultDs, parent, insertBefore)
+      : this.buildBooleanShape(op, operands, resultDs[0], parent, insertBefore);
 
-    remaining.splice(insertIdx < 0 ? remaining.length : insertIdx, 0, newShape);
-    this.shapes = remaining;
-    this.selectedShapeIds = [newShape.id];
+    this.rebuildShapesFromDOM(); // resync (operands may have been nested)
+    this.selectedShapeIds = [newId];
     this.saveHistory();
     this.onChangeCallback();
     return true;
   }
 
-  /** Operand geometry as `d` strings in drawing-layer space (the common space the
-   *  result lives in). Returns null if the layer isn't currently rendered. */
-  private operandDsInLayerSpace(operands: ShapeData[]): string[] | null {
-    const layerCtm = this.drawingLayer.getScreenCTM();
-    if (!layerCtm) return null;
-    const layerInv = layerCtm.inverse();
+  /** Selected shapes resolved anywhere in the tree, sorted bottom→top (DOM order). */
+  private selectedInDomOrder(): ShapeData[] {
+    const shapes = this.selectedShapeIds
+      .map(id => this.findShapeById(id))
+      .filter((s): s is ShapeData => !!s);
+    shapes.sort((a, b) =>
+      (a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+    return shapes;
+  }
+
+  /** The element all shapes share as a direct parent, else the drawing layer. */
+  private commonParentOf(shapes: ShapeData[]): SVGElement {
+    const first = shapes[0]?.element.parentElement ?? null;
+    if (first && shapes.every(s => s.element.parentElement === first)) {
+      return first as unknown as SVGElement;
+    }
+    return this.drawingLayer;
+  }
+
+  /** Operand geometry as `d` strings in a target parent's local space. */
+  private operandDsInParentSpace(operands: ShapeData[], parentEl: SVGElement): string[] | null {
+    const pctm = (parentEl as unknown as SVGGraphicsElement).getScreenCTM();
+    if (!pctm) return null;
+    const inv = pctm.inverse();
     return operands.map((s) => {
       const ctm = (s.element as unknown as SVGGraphicsElement).getScreenCTM();
-      return ctm ? elementPathData(s.element, layerInv.multiply(ctm)) : '';
+      return ctm ? elementPathData(s.element, inv.multiply(ctm)) : '';
     });
+  }
+
+  /** Operand geometry in drawing-layer (world) space — for the hover preview ghost. */
+  private operandDsInLayerSpace(operands: ShapeData[]): string[] | null {
+    return this.operandDsInParentSpace(operands, this.drawingLayer);
   }
 
   /**
@@ -1616,14 +1591,13 @@ export class AppState {
 
   /** Assemble the live `<g data-boolean>` wrapper from operand shapes. */
   private buildBooleanShape(
-    op: BooleanOp, operands: ShapeData[], resultD: string, insertBefore: SVGElement | null,
-  ): ShapeData {
+    op: BooleanOp, operands: ShapeData[], resultD: string, parent: SVGElement, insertBefore: SVGElement | null,
+  ): string {
     const SVG = 'http://www.w3.org/2000/svg';
     const gEl = document.createElementNS(SVG, 'g');
     const id = this.nextId();
     gEl.id = id;
-    const name = `${op[0].toUpperCase()}${op.slice(1)} ${id.replace('shape-', '#')}`;
-    gEl.setAttribute('data-name', name);
+    gEl.setAttribute('data-name', `${op[0].toUpperCase()}${op.slice(1)} ${id.replace('shape-', '#')}`);
     gEl.setAttribute('data-boolean', op);
     gEl.setAttribute('fill-rule', 'evenodd');
     // Result paint comes from the wrapper, seeded from the bottom operand.
@@ -1632,44 +1606,31 @@ export class AppState {
       const v = base.getAttribute(attr);
       if (v != null) gEl.setAttribute(attr, v);
     }
-
-    // Move operand elements in (bottom→top), tagging them as the editable source.
+    // Insert the wrapper into the operands' parent, then move operands in (bottom→
+    // top). They keep their coords (wrapper has no transform, same parent space).
+    parent.insertBefore(gEl, insertBefore);
     for (const s of operands) {
       s.element.setAttribute('data-bool-operand', '');
       gEl.appendChild(s.element);
-      s.parentId = id;
     }
-    // Cached result path renders on top and inherits the wrapper's paint.
     const resultEl = document.createElementNS(SVG, 'path');
     resultEl.setAttribute('data-bool-result', '');
     resultEl.setAttribute('d', resultD);
     gEl.appendChild(resultEl);
-
-    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
-    else this.drawingLayer.appendChild(gEl);
-
-    return {
-      id, type: 'boolean', element: gEl, name,
-      style: this.readStyle(gEl, 'boolean'),
-      visible: true, locked: false,
-      booleanOp: op as ShapeData['booleanOp'],
-      children: operands,
-    };
+    return id;
   }
 
   /** Divide: replace operands with a plain group of the disjoint region paths. */
   private buildDivideGroup(
-    operands: ShapeData[], pieceDs: string[], insertBefore: SVGElement | null,
-  ): ShapeData {
+    operands: ShapeData[], pieceDs: string[], parent: SVGElement, insertBefore: SVGElement | null,
+  ): string {
     const SVG = 'http://www.w3.org/2000/svg';
     const gEl = document.createElementNS(SVG, 'g');
     const id = this.nextId();
     gEl.id = id;
-    const name = `Divide ${id.replace('shape-', '#')}`;
-    gEl.setAttribute('data-name', name);
+    gEl.setAttribute('data-name', `Divide ${id.replace('shape-', '#')}`);
     const fill = operands[0].element.getAttribute('fill') ?? '#cccccc';
 
-    const children: ShapeData[] = [];
     for (const d of pieceDs) {
       if (!d.trim()) continue;
       const pEl = document.createElementNS(SVG, 'path');
@@ -1680,22 +1641,10 @@ export class AppState {
       pEl.setAttribute('fill-rule', 'evenodd');
       pEl.setAttribute('data-name', `Piece ${pid.replace('shape-', '#')}`);
       gEl.appendChild(pEl);
-      children.push({
-        id: pid, type: 'path', element: pEl, name: `Piece ${pid.replace('shape-', '#')}`,
-        style: this.readStyle(pEl, 'path'), visible: true, locked: false, parentId: id,
-      });
     }
-    // The originals are consumed by Divide.
-    for (const s of operands) s.element.remove();
-
-    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
-    else this.drawingLayer.appendChild(gEl);
-
-    return {
-      id, type: 'group', element: gEl, name,
-      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
-      visible: true, locked: false, children,
-    };
+    for (const s of operands) s.element.remove(); // consumed by Divide
+    parent.insertBefore(gEl, insertBefore);
+    return id;
   }
 
   /**
@@ -1891,49 +1840,32 @@ export class AppState {
    * fewer than two shapes are selected.
    */
   makeClippingMask(): boolean {
-    const idSet = new Set(this.selectedShapeIds);
-    const members: ShapeData[] = [];
-    const remaining: ShapeData[] = [];
-    let insertIdx = -1;
-    for (const s of this.shapes) {
-      if (idSet.has(s.id)) { if (insertIdx === -1) insertIdx = remaining.length; members.push(s); }
-      else remaining.push(s);
-    }
+    const members = this.selectedInDomOrder(); // anywhere in the tree, bottom→top
     if (members.length < 2) return false;
 
     const clip = members[members.length - 1]; // topmost = the mask
     const clipped = members.slice(0, -1);
+    const parent = this.commonParentOf(members);
 
     const SVG = 'http://www.w3.org/2000/svg';
     const gEl = document.createElementNS(SVG, 'g');
     const groupId = this.nextId();
     gEl.id = groupId;
-    const name = `Clip Group ${groupId.replace('shape-', '#')}`;
-    gEl.setAttribute('data-name', name);
+    gEl.setAttribute('data-name', `Clip Group ${groupId.replace('shape-', '#')}`);
     gEl.setAttribute('data-clip-group', '');
     const clipId = `clipmask-${groupId.replace('shape-', '')}`;
     gEl.setAttribute('clip-path', `url(#${clipId})`);
 
-    // The mask shape moves into a non-rendering <clipPath>; it's consumed as the
-    // clip region (matches Illustrator, where the top object becomes the mask).
+    // Insert the group into the operands' parent first (so moving members in keeps
+    // their coordinate space), then assemble.
+    parent.insertBefore(gEl, clip.element.nextSibling);
     const clipPathEl = document.createElementNS(SVG, 'clipPath');
     clipPathEl.setAttribute('id', clipId);
-    clipPathEl.appendChild(clip.element);
+    clipPathEl.appendChild(clip.element); // topmost object becomes the mask
     gEl.appendChild(clipPathEl);
+    for (const s of clipped) gEl.appendChild(s.element);
 
-    for (const s of clipped) { gEl.appendChild(s.element); s.parentId = groupId; }
-
-    const insertBefore = remaining[insertIdx]?.element ?? null;
-    if (insertBefore) this.drawingLayer.insertBefore(gEl, insertBefore);
-    else this.drawingLayer.appendChild(gEl);
-
-    const groupShape: ShapeData = {
-      id: groupId, type: 'group', element: gEl, name,
-      style: { fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1 },
-      visible: true, locked: false, children: clipped,
-    };
-    remaining.splice(insertIdx < 0 ? remaining.length : insertIdx, 0, groupShape);
-    this.shapes = remaining;
+    this.rebuildShapesFromDOM();
     this.selectedShapeIds = [groupId];
     this.saveHistory();
     this.onChangeCallback();
