@@ -11,13 +11,12 @@ import { EffectsManager, type EffectsHost } from './effects';
 import { MarkersManager, type MarkersHost } from './markers';
 import { AppearanceManager, type AppearanceHost } from './appearance';
 import { WidthStrokeManager, type WidthStrokeHost } from './width-stroke';
+import { PathfinderManager, type PathfinderHost } from './pathfinder';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
-  type BooleanOp, type StrokeJoin, type StrokeCap,
-  ensureBooleanEngine, booleanEngineReady, computeBoolean, elementPathData,
-  stripBooleanOperands, localPathData,
-  ensureOffsetEngine, offsetPathData, outlineStrokeData,
+  type BooleanOp,
+  ensureBooleanEngine, booleanEngineReady, stripBooleanOperands, localPathData,
 } from './boolean';
 import type { WidthPoint } from './variable-width';
 
@@ -165,6 +164,7 @@ export class AppState {
   private markers: MarkersManager;
   private appearanceMgr: AppearanceManager;
   private widthMgr: WidthStrokeManager;
+  private pathfinder: PathfinderManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -263,6 +263,23 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.widthMgr = new WidthStrokeManager(widthHost);
+    const pathfinderHost: PathfinderHost = {
+      getShapes: () => this.shapes,
+      getSelectedIds: () => this.selectedShapeIds,
+      setSelection: (ids) => { this.selectedShapeIds = ids; },
+      getDrawingLayer: () => this.drawingLayer,
+      findShape: (id) => this.findShapeById(id),
+      nextId: () => this.nextId(),
+      selectedInDomOrder: () => this.selectedInDomOrder(),
+      commonParentOf: (shapes) => this.commonParentOf(shapes),
+      convertShapeToPath: (shape) => this.convertShapeToPath(shape),
+      detachShape: (id) => this.detachShape(id),
+      exitGroupIsolation: () => this.exitGroupIsolation(),
+      rebuild: () => this.rebuildShapesFromDOM(),
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.pathfinder = new PathfinderManager(pathfinderHost);
     // Create the default frame ("Frame 1"). Frames are real <g data-frame>
     // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
     // artboards cache from them.
@@ -1182,7 +1199,7 @@ export class AppState {
     // engine was warmed on isolation entry (see enterGroup).
     if (this.activeGroupId && booleanEngineReady()) {
       const active = this.findShapeById(this.activeGroupId);
-      if (active?.type === 'boolean') this.recomputeBoolean(active.element);
+      if (active?.type === 'boolean') this.pathfinder.recompute(active.element);
     }
     // Transient editor-only artifacts must never reach a history snapshot: the
     // `data-bool-editing` reveal hook (would survive undo and show operands) and
@@ -1628,34 +1645,17 @@ export class AppState {
    * Returns false (no-op) when fewer than two shapes are selected or the result
    * is empty (e.g. intersecting disjoint shapes).
    */
-  async booleanSelection(op: BooleanOp, reverse = false): Promise<boolean> {
-    // Gather the selected shapes wherever they live in the tree (inside a frame,
-    // a group, or top level), bottom→top in z-order.
-    let operands = this.selectedInDomOrder();
-    if (operands.length < 2) return false;
-    if (reverse) operands.reverse(); // Subtract "swap": flip which shape is the cutter.
-
-    await ensureBooleanEngine();
-
-    // Operate in the operands' COMMON PARENT space, so the result lands in the same
-    // container (e.g. the frame) with correct coordinates.
-    const parent = this.commonParentOf(operands);
-    const operandDs = this.operandDsInParentSpace(operands, parent);
-    if (!operandDs) return false;
-    const resultDs = computeBoolean(operandDs, op);
-    if (resultDs.length === 0 || resultDs.every((d) => !d.trim())) return false;
-
-    const insertBefore = operands[operands.length - 1].element.nextSibling as SVGElement | null;
-    const newId = op === 'divide'
-      ? this.buildDivideGroup(operands, resultDs, parent, insertBefore)
-      : this.buildBooleanShape(op, operands, resultDs[0], parent, insertBefore);
-
-    this.rebuildShapesFromDOM(); // resync (operands may have been nested)
-    this.selectedShapeIds = [newId];
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
+  // Pathfinder / boolean / shape-builder / outline / offset are owned by
+  // PathfinderManager; these delegate. selectedInDomOrder / commonParentOf /
+  // convertShapeToPath stay here (grouping & clipping use them too) and are
+  // surfaced to the manager through its host.
+  booleanSelection(op: BooleanOp, reverse = false): Promise<boolean> { return this.pathfinder.booleanSelection(op, reverse); }
+  previewSelectionBoolean(op: BooleanOp, reverse = false): string[] { return this.pathfinder.previewSelectionBoolean(op, reverse); }
+  selectionFaces(): Promise<{ faces: string[]; ids: string[] } | null> { return this.pathfinder.selectionFaces(); }
+  replaceShapesWithPaths(originalIds: string[], resultDs: string[], fill: string): void { this.pathfinder.replaceShapesWithPaths(originalIds, resultDs, fill); }
+  flattenBoolean(id: string): void { this.pathfinder.flatten(id); }
+  outlineSelectedStroke(): Promise<boolean> { return this.pathfinder.outlineSelectedStroke(); }
+  offsetSelectedPath(delta: number): Promise<boolean> { return this.pathfinder.offsetSelectedPath(delta); }
 
   /** Selected shapes resolved anywhere in the tree, sorted bottom→top (DOM order). */
   private selectedInDomOrder(): ShapeData[] {
@@ -1676,194 +1676,6 @@ export class AppState {
     return this.drawingLayer;
   }
 
-  /** Operand geometry as `d` strings in a target parent's local space. */
-  private operandDsInParentSpace(operands: ShapeData[], parentEl: SVGElement): string[] | null {
-    const pctm = (parentEl as unknown as SVGGraphicsElement).getScreenCTM();
-    if (!pctm) return null;
-    const inv = pctm.inverse();
-    return operands.map((s) => {
-      const ctm = (s.element as unknown as SVGGraphicsElement).getScreenCTM();
-      return ctm ? elementPathData(s.element, inv.multiply(ctm)) : '';
-    });
-  }
-
-  /** Operand geometry in drawing-layer (world) space — for the hover preview ghost. */
-  private operandDsInLayerSpace(operands: ShapeData[]): string[] | null {
-    return this.operandDsInParentSpace(operands, this.drawingLayer);
-  }
-
-  /**
-   * Non-mutating preview of a boolean over the current selection, in drawing-layer
-   * space — used by the Pathfinder panel to ghost the result on hover. Synchronous;
-   * returns [] if the engine isn't loaded yet or fewer than two shapes are selected.
-   */
-  previewSelectionBoolean(op: BooleanOp, reverse = false): string[] {
-    if (!booleanEngineReady()) return [];
-    const operands = this.shapes.filter((s) => this.selectedShapeIds.includes(s.id));
-    if (operands.length < 2) return [];
-    if (reverse) operands.reverse();
-    const operandDs = this.operandDsInLayerSpace(operands);
-    if (!operandDs) return [];
-    return computeBoolean(operandDs, op);
-  }
-
-  // ---- Shape Builder support ----
-
-  /**
-   * Decompose the current top-level selection into its arrangement faces (the
-   * atomic regions of the overlapping shapes), in drawing-layer space. Used by the
-   * Shape Builder tool for hit-testing and merge/delete. Returns null if fewer than
-   * two shapes are selected.
-   */
-  async selectionFaces(): Promise<{ faces: string[]; ids: string[] } | null> {
-    const operands = this.shapes.filter((s) =>
-      this.selectedShapeIds.includes(s.id) &&
-      ['path', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'boolean', 'group'].includes(s.type));
-    if (operands.length < 2) return null;
-    await ensureBooleanEngine();
-    const ds = this.operandDsInLayerSpace(operands);
-    if (!ds) return null;
-    const faces = computeBoolean(ds, 'divide').filter((d) => d.trim());
-    if (faces.length === 0) return null;
-    return { faces, ids: operands.map((s) => s.id) };
-  }
-
-  /**
-   * Commit a Shape Builder session: remove the original shapes and add the built
-   * result paths (already in drawing-layer space), each filled with `fill`. Adds
-   * them at the z-position of the lowest original. Selects the results.
-   */
-  replaceShapesWithPaths(originalIds: string[], resultDs: string[], fill: string): void {
-    for (const id of originalIds) this.detachShape(id); // remove without per-shape history
-
-    const SVG = 'http://www.w3.org/2000/svg';
-    const newIds: string[] = [];
-    for (const d of resultDs) {
-      if (!d.trim()) continue;
-      const el = document.createElementNS(SVG, 'path');
-      const id = this.nextId();
-      el.id = id;
-      el.setAttribute('d', d);
-      el.setAttribute('fill', fill);
-      el.setAttribute('fill-rule', 'evenodd');
-      el.setAttribute('data-name', `Shape ${id.replace('shape-', '#')}`);
-      this.drawingLayer.appendChild(el);
-      newIds.push(id);
-    }
-    this.selectedShapeIds = newIds;
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = newIds;
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Assemble the live `<g data-boolean>` wrapper from operand shapes. */
-  private buildBooleanShape(
-    op: BooleanOp, operands: ShapeData[], resultD: string, parent: SVGElement, insertBefore: SVGElement | null,
-  ): string {
-    const SVG = 'http://www.w3.org/2000/svg';
-    const gEl = document.createElementNS(SVG, 'g');
-    const id = this.nextId();
-    gEl.id = id;
-    gEl.setAttribute('data-name', `${op[0].toUpperCase()}${op.slice(1)} ${id.replace('shape-', '#')}`);
-    gEl.setAttribute('data-boolean', op);
-    gEl.setAttribute('fill-rule', 'evenodd');
-    // Result paint comes from the wrapper, seeded from the bottom operand.
-    const base = operands[0].element;
-    for (const attr of ['fill', 'stroke', 'stroke-width', 'opacity', 'fill-opacity', 'stroke-opacity']) {
-      const v = base.getAttribute(attr);
-      if (v != null) gEl.setAttribute(attr, v);
-    }
-    // Insert the wrapper into the operands' parent, then move operands in (bottom→
-    // top). They keep their coords (wrapper has no transform, same parent space).
-    parent.insertBefore(gEl, insertBefore);
-    for (const s of operands) {
-      s.element.setAttribute('data-bool-operand', '');
-      gEl.appendChild(s.element);
-    }
-    const resultEl = document.createElementNS(SVG, 'path');
-    resultEl.setAttribute('data-bool-result', '');
-    resultEl.setAttribute('d', resultD);
-    gEl.appendChild(resultEl);
-    return id;
-  }
-
-  /** Divide: replace operands with a plain group of the disjoint region paths. */
-  private buildDivideGroup(
-    operands: ShapeData[], pieceDs: string[], parent: SVGElement, insertBefore: SVGElement | null,
-  ): string {
-    const SVG = 'http://www.w3.org/2000/svg';
-    const gEl = document.createElementNS(SVG, 'g');
-    const id = this.nextId();
-    gEl.id = id;
-    gEl.setAttribute('data-name', `Divide ${id.replace('shape-', '#')}`);
-    const fill = operands[0].element.getAttribute('fill') ?? '#cccccc';
-
-    for (const d of pieceDs) {
-      if (!d.trim()) continue;
-      const pEl = document.createElementNS(SVG, 'path');
-      const pid = this.nextId();
-      pEl.id = pid;
-      pEl.setAttribute('d', d);
-      pEl.setAttribute('fill', fill);
-      pEl.setAttribute('fill-rule', 'evenodd');
-      pEl.setAttribute('data-name', `Piece ${pid.replace('shape-', '#')}`);
-      gEl.appendChild(pEl);
-    }
-    for (const s of operands) s.element.remove(); // consumed by Divide
-    parent.insertBefore(gEl, insertBefore);
-    return id;
-  }
-
-  /**
-   * Regenerate a live boolean's cached result path from its current operands.
-   * Operands are read in the wrapper's local space, so any per-operand or
-   * ancestor transform is handled uniformly. No-op if the engine isn't loaded
-   * or operands aren't currently rendered (so it never clobbers with stale data).
-   */
-  recomputeBoolean(wrapperEl: SVGElement): void {
-    if (!booleanEngineReady()) return;
-    const op = (wrapperEl.getAttribute('data-boolean') as BooleanOp) || 'unite';
-    const wrapperCtm = (wrapperEl as unknown as SVGGraphicsElement).getScreenCTM();
-    if (!wrapperCtm) return;
-    const wInv = wrapperCtm.inverse();
-    const operandDs: string[] = [];
-    let resultEl: SVGElement | null = null;
-    for (const child of Array.from(wrapperEl.children)) {
-      const el = child as SVGElement;
-      if (el.hasAttribute('data-bool-result')) { resultEl = el; continue; }
-      if (!el.hasAttribute('data-bool-operand')) continue;
-      const ctm = (el as unknown as SVGGraphicsElement).getScreenCTM();
-      if (!ctm) return; // an operand isn't rendered → abort rather than clobber
-      operandDs.push(elementPathData(el, wInv.multiply(ctm)));
-    }
-    if (!resultEl || operandDs.length < 2) return;
-    const out = computeBoolean(operandDs, op);
-    if (out[0]) resultEl.setAttribute('d', out[0]);
-  }
-
-  /** Commit a live boolean to a plain editable `<path>`, discarding operands. */
-  flattenBoolean(id: string): void {
-    const shape = this.findShapeById(id);
-    if (!shape || shape.type !== 'boolean') return;
-    const wrapper = shape.element;
-    if (booleanEngineReady()) this.recomputeBoolean(wrapper);
-    const result = wrapper.querySelector('[data-bool-result]');
-    const d = result?.getAttribute('d') ?? '';
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.id = id;
-    path.setAttribute('d', d);
-    for (const attr of ['fill', 'stroke', 'stroke-width', 'opacity', 'fill-rule', 'fill-opacity', 'stroke-opacity', 'data-name']) {
-      const v = wrapper.getAttribute(attr);
-      if (v != null) path.setAttribute(attr, v);
-    }
-    this.exitGroupIsolation();
-    wrapper.replaceWith(path);
-    this.rebuildShapesFromDOM();
-    this.selectedShapeIds = [id];
-    this.saveHistory();
-    this.onChangeCallback();
-  }
 
   /**
    * Replace a primitive element (rect, ellipse, polygon/star, line, polyline) with
@@ -1891,111 +1703,6 @@ export class AppState {
     return true;
   }
 
-  // ---- Outline Stroke / Offset Path (paperjs-offset via the boolean engine) ----
-
-  private static readonly PATHABLE: ReadonlyArray<ShapeData['type']> =
-    ['path', 'rect', 'ellipse', 'line', 'polyline', 'polygon'];
-
-  /**
-   * Convert the stroke of each selected stroked object into a filled outline path
-   * (Illustrator's Object → Path → Outline Stroke). If the object also has a fill,
-   * the fill body is kept and the outline is added above it in a group; a fill-less
-   * shape is replaced outright. Returns false if nothing had an outline-able stroke.
-   */
-  async outlineSelectedStroke(): Promise<boolean> {
-    const targets = this.selectedShapeIds
-      .map(id => this.findShapeById(id))
-      .filter((s): s is ShapeData => !!s && AppState.PATHABLE.includes(s.type))
-      .filter(s => {
-        const stroke = s.element.getAttribute('stroke');
-        const w = parseFloat(s.element.getAttribute('stroke-width') ?? '0');
-        return !!stroke && stroke !== 'none' && w > 0;
-      });
-    if (targets.length === 0) return false;
-
-    await ensureOffsetEngine();
-    const resultIds: string[] = [];
-    for (const s of targets) {
-      const id = this.outlineOneStroke(s);
-      if (id) resultIds.push(id);
-    }
-    this.rebuildShapesFromDOM();
-    if (resultIds.length) this.selectedShapeIds = resultIds;
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
-
-  /** Outline one shape's stroke; returns the id of the resulting top-level element. */
-  private outlineOneStroke(shape: ShapeData): string | null {
-    const el = shape.element;
-    const localD = shape.type === 'path' ? (el.getAttribute('d') ?? '') : localPathData(el);
-    if (!localD.trim()) return null;
-    const align = el.getAttribute('data-stroke-align');
-    let width = parseFloat(el.getAttribute('stroke-width') ?? '1');
-    if (align === 'inside' || align === 'outside') width /= 2; // recover authored width
-    const rawJoin = el.getAttribute('stroke-linejoin');
-    const join: StrokeJoin = rawJoin === 'round' || rawJoin === 'bevel' ? rawJoin : 'miter';
-    const cap: StrokeCap = el.getAttribute('stroke-linecap') === 'round' ? 'round' : 'butt';
-    const outlineD = outlineStrokeData(localD, width, join, cap);
-    if (!outlineD.trim()) return null;
-
-    const SVG = 'http://www.w3.org/2000/svg';
-    const outline = document.createElementNS(SVG, 'path');
-    outline.setAttribute('d', outlineD);
-    outline.setAttribute('fill', el.getAttribute('stroke') ?? '#000000');
-    outline.setAttribute('fill-rule', 'nonzero');
-    const so = el.getAttribute('stroke-opacity'); if (so) outline.setAttribute('fill-opacity', so);
-    const tf = el.getAttribute('transform'); if (tf) outline.setAttribute('transform', tf);
-
-    const fill = el.getAttribute('fill');
-    if (!fill || fill === 'none') {
-      // No fill body: the outline simply replaces the shape.
-      outline.id = shape.id;
-      const name = el.getAttribute('data-name'); if (name) outline.setAttribute('data-name', name);
-      el.replaceWith(outline);
-      return shape.id;
-    }
-    // Keep the fill body (minus its stroke), group it under the outline.
-    for (const a of ['stroke', 'stroke-width', 'stroke-linejoin', 'stroke-linecap', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-opacity', 'data-stroke-align', 'clip-path']) {
-      el.removeAttribute(a);
-    }
-    const g = document.createElementNS(SVG, 'g');
-    const gid = this.nextId();
-    g.id = gid;
-    g.setAttribute('data-name', 'Outlined Stroke');
-    outline.id = this.nextId();
-    el.replaceWith(g);
-    g.appendChild(el);
-    g.appendChild(outline);
-    return gid;
-  }
-
-  /**
-   * Offset every selected path outward (positive) or inward (negative) by `delta`,
-   * in place, preserving curves (Illustrator's Object → Path → Offset Path).
-   * Primitives are converted to paths first. Returns false if nothing changed.
-   */
-  async offsetSelectedPath(delta: number): Promise<boolean> {
-    if (!delta) return false;
-    const shapes = this.selectedShapeIds
-      .map(id => this.findShapeById(id))
-      .filter((s): s is ShapeData => !!s && AppState.PATHABLE.includes(s.type));
-    if (shapes.length === 0) return false;
-
-    await ensureOffsetEngine();
-    let changed = false;
-    for (const s of shapes) {
-      if (s.type !== 'path' && !this.convertShapeToPath(s)) continue;
-      const d = s.element.getAttribute('d') ?? '';
-      const out = offsetPathData(d, delta, 'miter');
-      if (out.trim()) { s.element.setAttribute('d', out); changed = true; }
-    }
-    if (!changed) return false;
-    this.saveHistory();
-    this.onChangeCallback();
-    return true;
-  }
 
   // ---- Clipping masks ----
 
