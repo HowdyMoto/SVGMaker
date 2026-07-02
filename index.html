@@ -341,7 +341,7 @@
             </pattern>
           </defs>
           <!-- Pasteboard (dark area outside artboard) -->
-          <rect id="pasteboard" x="-10000" y="-10000" width="20000" height="20000" fill="#2b2e36"/>
+          <rect id="pasteboard" x="-10000" y="-10000" width="20000" height="20000" fill="#000000"/>
           <!-- Artboard backgrounds rendered dynamically -->
           <g id="artboards-layer"></g>
           <!-- Grid overlay (toggled via View menu) -->
@@ -577,6 +577,18 @@
               </div>
             </div>
 
+          </div>
+        </div>
+
+        <!-- Swatches -->
+        <div class="panel" id="panel-swatches">
+          <div class="panel-header" data-panel="swatches">
+            <span>Swatches</span>
+            <button class="panel-add" id="swatch-add" title="Add current fill colour to swatches">&#x2b;</button>
+            <button class="panel-collapse">&#x25BC;</button>
+          </div>
+          <div class="panel-body">
+            <div id="swatches-grid" class="swatches-grid"></div>
           </div>
         </div>
 
