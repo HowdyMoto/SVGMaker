@@ -94,6 +94,10 @@ export function renderFrameGuides(state: AppState, svgCanvas: SVGSVGElement, zoo
   const tick = 5 / zoom;      // major tick length
   const font = 10 / zoom;     // ≈10 screen px
   const step = niceStep(zoom);
+  // Visible world rect — ticks are clipped to it so a fine grid at high zoom can't
+  // generate thousands of off-screen tick/label nodes on every pan.
+  const vb = svgCanvas.viewBox.baseVal;
+  const hasVB = vb && vb.width > 0 && vb.height > 0;
 
   for (const ab of state.artboards) {
     if (!ab.rulers) continue;
@@ -133,14 +137,21 @@ export function renderFrameGuides(state: AppState, svgCanvas: SVGSVGElement, zoo
       g.appendChild(el);
     };
 
+    // Only step over the ticks that fall in the visible viewport (clamped to the
+    // frame), so tick count tracks screen size, not frame-size ÷ step.
+    const loX = hasVB ? Math.max(0, Math.floor((vb.x - ab.x) / step) * step) : 0;
+    const hiX = hasVB ? Math.min(ab.width, vb.x + vb.width - ab.x) : ab.width;
+    const loY = hasVB ? Math.max(0, Math.floor((vb.y - ab.y) / step) * step) : 0;
+    const hiY = hasVB ? Math.min(ab.height, vb.y + vb.height - ab.y) : ab.height;
+
     // Top ruler: ticks + labels at frame-local X values.
-    for (let v = 0; v <= ab.width + 0.5; v += step) {
+    for (let v = loX; v <= hiX + 0.5; v += step) {
       const x = ab.x + v;
       tickLine(x, ab.y - tick, x, ab.y);
       label(String(Math.round(v)), x + 2 / zoom, ab.y - t + font);
     }
     // Left ruler: ticks + vertical labels at frame-local Y values.
-    for (let v = 0; v <= ab.height + 0.5; v += step) {
+    for (let v = loY; v <= hiY + 0.5; v += step) {
       const y = ab.y + v;
       tickLine(ab.x - tick, y, ab.x, y);
       label(String(Math.round(v)), ab.x - t + font, y - 2 / zoom, -90);
