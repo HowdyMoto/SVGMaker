@@ -200,11 +200,15 @@ export function setupProperties(state: AppState): void {
       el.setAttribute('y', String(y + h));
     }
 
-    // Apply rotation about the element's centre, preserving any translate.
-    const rotation = parseFloat(propRotation.value) || 0;
-    shape.rotation = rotation;
-    const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-    setRotation(el, rotation, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
+    // Apply rotation about the element's centre, preserving any translate. Frames
+    // stay axis-aligned (they double as export units; rotation would break
+    // export/rulers/grid) — never rotate one, even via the field.
+    if (shape.type !== 'frame') {
+      const rotation = parseFloat(propRotation.value) || 0;
+      shape.rotation = rotation;
+      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
+      setRotation(el, rotation, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
+    }
 
     state.saveHistory();
     state.onChange_public();
@@ -391,6 +395,8 @@ export function updatePropertiesPanel(state: AppState): void {
     typePanel.style.display = 'none';
     propX.value = '0'; propY.value = '0'; propW.value = '0'; propH.value = '0';
     propRotation.value = '0';
+    const rotRow0 = document.getElementById('prop-rotation-row');
+    if (rotRow0) rotRow0.style.display = ''; // reset after a frame was selected
     strokeWeight.value = String(ds.strokeWidth);
     strokeDash.value = ds.strokeDasharray ?? '';
     strokeDashoffsetInput.value = String(ds.strokeDashoffset ?? 0);
@@ -455,6 +461,11 @@ export function updatePropertiesPanel(state: AppState): void {
     const rotVal = String(Math.round(shape.rotation ?? 0));
     propRotation.value = rotVal;
   } catch { /* ignore */ }
+
+  // Frames can't be rotated (they double as axis-aligned export units) — hide the
+  // rotation field so it isn't offered.
+  const rotRow = document.getElementById('prop-rotation-row');
+  if (rotRow) rotRow.style.display = shape.type === 'frame' ? 'none' : '';
 
   const capBtns = document.querySelectorAll('#stroke-caps button');
   capBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-cap') === (s.strokeLinecap ?? 'butt')));
