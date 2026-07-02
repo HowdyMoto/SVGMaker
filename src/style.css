@@ -1703,6 +1703,38 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   text-align: center;
 }
 
+/* Width (variable-width stroke) panel */
+.width-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.width-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.width-preset {
+  background: var(--ai-btn);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ai-text-dim);
+  cursor: pointer;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.width-preset svg {
+  width: 100%;
+  height: 18px;
+}
+.width-preset:hover {
+  border-color: var(--ai-accent);
+  color: var(--ai-text);
+}
+
 /* Stroke panel */
 .btn-group {
   display: flex;

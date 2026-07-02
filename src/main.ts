@@ -20,12 +20,14 @@ import { PolygonShapeTool } from './tools/polygon-tool';
 import { ArtboardTool } from './tools/artboard-tool';
 import { ImageTool } from './tools/image';
 import { ShapeBuilderTool } from './tools/shape-builder';
+import { WidthTool } from './tools/width';
 import { updateSelectionOverlay } from './ui/selection-overlay';
 import { renderNodeOverlay } from './ui/node-overlay';
 import { updateNodeHint } from './ui/node-hint';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { setupEffects, updateEffectsPanel } from './ui/effects';
 import { setupAppearanceStack, updateAppearanceStack } from './ui/appearance';
+import { setupWidthPanel, updateWidthPanel } from './ui/width-panel';
 import { setupMarkers, updateMarkersPanel } from './ui/markers';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { setupMenus } from './ui/menus';
@@ -80,6 +82,7 @@ const toolLabels: Record<ToolName, string> = {
   artboard: 'Artboard Tool',
   image: 'Image Tool',
   shapeBuilder: 'Shape Builder Tool',
+  width: 'Width Tool',
 };
 
 // Tools
@@ -101,6 +104,7 @@ const tools: Record<ToolName, Tool> = {
   artboard: new ArtboardTool(state, canvas, svgCanvas),
   image: new ImageTool(state, canvas, svgCanvas),
   shapeBuilder: new ShapeBuilderTool(state, canvas, svgCanvas),
+  width: new WidthTool(state, canvas, svgCanvas),
 };
 
 let activeTool: Tool = tools.select;
@@ -146,6 +150,7 @@ function onStateChange(): void {
   updatePropertiesPanel(state);
   updateEffectsPanel(state);
   updateAppearanceStack(state);
+  updateWidthPanel(state);
   updateMarkersPanel(state);
   updateLayersPanel(state);
   updateSymbolsPanel(state);
@@ -322,6 +327,7 @@ setupMenus(commandCtx);
 setupProperties(state);
 setupEffects(state);
 setupAppearanceStack(state);
+setupWidthPanel(state);
 setupMarkers(state);
 setupLayerButtons(commandCtx);
 setupColorPicker(state);

@@ -251,6 +251,9 @@
           <button class="tool-btn" data-tool="path" title="Pen Tool (P)">
             <svg viewBox="0 0 24 24"><path d="M4 20 Q12 4 20 12" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="20" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/></svg>
           </button>
+          <button class="tool-btn" data-tool="width" title="Width Tool (Shift+W) — drag on a path to vary its stroke thickness">
+            <svg viewBox="0 0 24 24"><path d="M3 12 Q12 5 21 12 Q12 19 3 12 Z" fill="currentColor" fill-opacity="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
         </div>
 
         <div class="tool-divider"></div>
@@ -594,6 +597,31 @@
           <div class="panel-body">
             <div id="ap-list" class="ap-list"></div>
             <div id="ap-empty" class="ap-empty">Select an object to stack fills &amp; strokes.</div>
+          </div>
+        </div>
+
+        <!-- Width (variable-width stroke profiles) -->
+        <div class="panel" id="panel-width">
+          <div class="panel-header" data-panel="width">
+            <span>Width</span>
+            <button class="panel-collapse">&#x25BC;</button>
+          </div>
+          <div class="panel-body">
+            <div class="width-row">
+              <span class="appearance-label" title="Base stroke width">Width</span>
+              <input type="number" id="width-base" value="12" min="0" step="0.5" class="appearance-weight" />
+              <span class="appearance-unit">pt</span>
+              <button id="width-release" class="ap-add-btn" title="Remove the width profile, restoring a plain stroke" style="margin-left:auto;display:none">Release</button>
+            </div>
+            <div id="width-presets" class="width-presets">
+              <button class="width-preset" data-profile="uniform" title="Uniform width"><svg viewBox="0 0 40 20"><path d="M2 8 L38 8 L38 12 L2 12 Z" fill="currentColor"/></svg></button>
+              <button class="width-preset" data-profile="taperEnd" title="Taper to end"><svg viewBox="0 0 40 20"><path d="M2 6 L38 10 L2 14 Z" fill="currentColor"/></svg></button>
+              <button class="width-preset" data-profile="taperStart" title="Taper from start"><svg viewBox="0 0 40 20"><path d="M38 6 L2 10 L38 14 Z" fill="currentColor"/></svg></button>
+              <button class="width-preset" data-profile="leaf" title="Taper both ends (leaf)"><svg viewBox="0 0 40 20"><path d="M2 10 Q20 3 38 10 Q20 17 2 10 Z" fill="currentColor"/></svg></button>
+              <button class="width-preset" data-profile="bulge" title="Bulge in the middle"><svg viewBox="0 0 40 20"><path d="M2 8 Q20 1 38 8 L38 12 Q20 19 2 12 Z" fill="currentColor"/></svg></button>
+              <button class="width-preset" data-profile="waist" title="Pinch in the middle"><svg viewBox="0 0 40 20"><path d="M2 5 Q20 11 38 5 L38 15 Q20 9 2 15 Z" fill="currentColor"/></svg></button>
+            </div>
+            <div id="width-empty" class="ap-empty">Select a path to give it a variable-width stroke.</div>
           </div>
         </div>
 
