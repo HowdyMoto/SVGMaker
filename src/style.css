@@ -9,7 +9,8 @@
    * chrome, panels a step up, a slightly lighter pasteboard so the artboard
    * floats) with a refined indigo-blue accent and soft off-white text. Variable
    * names are unchanged, so the whole app + the design-system page update here. */
-  --ai-bg:           #000000;  /* canvas pasteboard / surround (black) */
+  --ai-bg:           #2c2f36;  /* canvas pasteboard / surround — soft charcoal so
+                                  the white artboard floats without harsh contrast */
   --ai-panel:        #21242c;  /* main side panels */
   --ai-panel-dark:   #1c1f26;  /* control bar / secondary chrome */
   --ai-panel-darker: #171a20;  /* menu bar / status bar / darkest chrome */

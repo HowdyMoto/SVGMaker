@@ -60,6 +60,9 @@ const guidesLayer = document.getElementById('guides-layer') as unknown as SVGGEl
 
 // State & canvas
 const state = new AppState(drawingLayer, onStateChange);
+// Let tools request a tool switch (setTool is a hoisted declaration below). Used
+// by the draw tools to return to Select after placing one shape (Figma-style).
+state.requestTool = (t) => setTool(t);
 const canvas = new CanvasController(svgCanvas);
 // Multiple open documents (tabs). Tab 0 adopts the boot document.
 const docs = new DocumentManager(state, canvas, renderTabBar);

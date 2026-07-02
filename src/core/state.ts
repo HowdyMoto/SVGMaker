@@ -95,6 +95,10 @@ export class AppState {
   activeArtboardId: string | null = null;
   selectedArtboardId: string | null = null; // used by artboard tool
 
+  /** Lets a tool ask the app to switch tools (e.g. a draw tool returns to Select
+   *  after placing one shape). Wired by main.ts to setTool; null in headless use. */
+  requestTool: ((tool: ToolName) => void) | null = null;
+
   // Which side-panel list the user last interacted with, so Delete/Backspace
   // targets the right thing ('layers' = shapes on canvas).
   activePanel: 'layers' | 'artboards' | 'symbols' = 'layers';

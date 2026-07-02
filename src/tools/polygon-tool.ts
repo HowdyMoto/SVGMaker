@@ -79,6 +79,7 @@ export class PolygonShapeTool extends BaseTool {
       visible: true, locked: false,
     });
     this.previewEl = null;
+    this.state.requestTool?.('select'); // return to Select after placing one shape
   }
 
   private calcPolygonPoints(

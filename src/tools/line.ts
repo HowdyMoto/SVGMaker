@@ -81,5 +81,6 @@ export class LineTool extends BaseTool {
       visible: true, locked: false,
     });
     this.currentEl = null;
+    this.state.requestTool?.('select'); // return to Select after placing one shape
   }
 }
