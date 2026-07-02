@@ -12,6 +12,7 @@
 
 import type { AppState } from './state';
 import type { BBox } from './types';
+import { localBBoxInLayer } from './coords';
 
 const NS = 'http://www.w3.org/2000/svg';
 const EPS = 0.01;
@@ -33,32 +34,7 @@ export interface GuideLine { x1: number; y1: number; x2: number; y2: number }
  *  SelectTool.getScreenSpaceBBox for a single element). Returns null if the
  *  element has no renderable geometry. */
 export function getAABB(el: SVGGraphicsElement, svgCanvas: SVGSVGElement): BBox | null {
-  const drawingLayer = svgCanvas.querySelector('#drawing-layer') as SVGGraphicsElement | null;
-  const parentCtm = drawingLayer?.getCTM?.();
-  try {
-    const bbox = el.getBBox();
-    const ctm = el.getCTM();
-    if (ctm && parentCtm) {
-      const m = parentCtm.inverse().multiply(ctm);
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const c of [
-        { x: bbox.x, y: bbox.y },
-        { x: bbox.x + bbox.width, y: bbox.y },
-        { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
-        { x: bbox.x, y: bbox.y + bbox.height },
-      ]) {
-        const pt = svgCanvas.createSVGPoint();
-        pt.x = c.x; pt.y = c.y;
-        const t = pt.matrixTransform(m);
-        minX = Math.min(minX, t.x); minY = Math.min(minY, t.y);
-        maxX = Math.max(maxX, t.x); maxY = Math.max(maxY, t.y);
-      }
-      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-    }
-    return { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
-  } catch {
-    return null;
-  }
+  return localBBoxInLayer(svgCanvas, el);
 }
 
 /** Push the left/center/right (vertical) and top/middle/bottom (horizontal)

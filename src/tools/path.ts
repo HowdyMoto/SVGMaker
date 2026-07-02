@@ -1,6 +1,7 @@
 import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { worldToLocal } from '../core/coords';
 import { PathEditSession } from '../core/path-edit';
 import { showGestureHud, hideGestureHud } from '../ui/gesture-hud';
 
@@ -166,15 +167,7 @@ export class PathTool extends BaseTool {
    * getCTM().
    */
   private toLocal(pt: Point, el: SVGElement): Point {
-    const drawing = this.svgCanvas.querySelector('#drawing-layer') as unknown as SVGGraphicsElement | null;
-    const elCtm = (el as unknown as SVGGraphicsElement).getCTM?.();
-    const parentCtm = drawing?.getCTM?.();
-    if (!elCtm || !parentCtm) return pt;
-    const m = parentCtm.inverse().multiply(elCtm);
-    const p = this.svgCanvas.createSVGPoint();
-    p.x = pt.x; p.y = pt.y;
-    const local = p.matrixTransform(m.inverse());
-    return { x: local.x, y: local.y };
+    return worldToLocal(this.svgCanvas, el, pt);
   }
 
   /**

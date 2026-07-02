@@ -2,6 +2,7 @@ import { BaseTool } from './base';
 import type { Point } from '../core/types';
 import { nearestOnPath, pointAtParam, pathLength, type WidthPoint } from '../core/variable-width';
 import { localPathData } from '../core/boolean';
+import { worldToLocal } from '../core/coords';
 
 /**
  * Width tool — sculpt a variable-width stroke by dragging on a path (Illustrator's
@@ -161,16 +162,7 @@ export class WidthTool extends BaseTool {
   // ---- coordinate + overlay ----
 
   private toLocal(pt: Point, el: SVGElement | null): Point {
-    const g = el as unknown as SVGGraphicsElement | null;
-    const drawing = this.svgCanvas.querySelector('#drawing-layer') as unknown as SVGGraphicsElement | null;
-    const elCtm = g?.getCTM?.();
-    const parentCtm = drawing?.getCTM?.();
-    if (!elCtm || !parentCtm) return pt;
-    const m = parentCtm.inverse().multiply(elCtm);
-    const p = this.svgCanvas.createSVGPoint();
-    p.x = pt.x; p.y = pt.y;
-    const local = p.matrixTransform(m.inverse());
-    return { x: local.x, y: local.y };
+    return worldToLocal(this.svgCanvas, el, pt);
   }
 
   private overlay(): SVGGElement | null {

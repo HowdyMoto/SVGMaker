@@ -1,6 +1,7 @@
 import { tokens } from '../ui/tokens';
 import { BaseTool } from './base';
 import type { Point } from '../core/types';
+import { worldToLocal } from '../core/coords';
 import type { AnchorRef, HandleHit } from '../core/path-edit';
 
 /**
@@ -311,16 +312,7 @@ export class NodeEditTool extends BaseTool {
    * drawing layer cancels the viewBox offset that getCTM() bakes in.
    */
   private toLocal(pt: Point): Point {
-    const el = this.editingElement() as unknown as SVGGraphicsElement | null;
-    const drawing = this.svgCanvas.querySelector('#drawing-layer') as unknown as SVGGraphicsElement | null;
-    const elCtm = el?.getCTM?.();
-    const parentCtm = drawing?.getCTM?.();
-    if (!elCtm || !parentCtm) return pt;
-    const m = parentCtm.inverse().multiply(elCtm); // local -> drawing-layer (user) space
-    const p = this.svgCanvas.createSVGPoint();
-    p.x = pt.x; p.y = pt.y;
-    const local = p.matrixTransform(m.inverse());
-    return { x: local.x, y: local.y };
+    return worldToLocal(this.svgCanvas, this.editingElement(), pt);
   }
 
   private findShapeElement(target: SVGElement | null): SVGElement | null {
