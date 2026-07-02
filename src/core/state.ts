@@ -1943,6 +1943,25 @@ export class AppState {
       .filter((el): el is SVGElement => !!el);
   }
 
+  /** Apply a fill paint to every selected object in one undo step (used by the
+   *  Swatches panel; also the multi-select fill the color picker lacked). */
+  setSelectionFill(value: string): void {
+    this.defaultStyle.fill = value;
+    this.fillNone = value === 'none';
+    for (const el of this.selectionElements()) el.setAttribute('fill', value);
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Apply a stroke paint to every selected object in one undo step. */
+  setSelectionStroke(value: string): void {
+    this.defaultStyle.stroke = value;
+    this.strokeNone = value === 'none';
+    for (const el of this.selectionElements()) el.setAttribute('stroke', value);
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
   setObjectBlur(id: string, stdDev: number, record = true): void {
     const el = this.findShapeById(id)?.element;
     if (!el) return;

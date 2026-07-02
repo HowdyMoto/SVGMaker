@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "design-system": "vite --port 5199 --open /design-system.html",
     "corpus:fetch": "node scripts/fetch-corpus.mjs",
     "smoke:fetch": "node scripts/fetch-smoke.mjs",
     "fixtures:gen": "node scripts/gen-fixtures.mjs",
