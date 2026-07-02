@@ -37,7 +37,6 @@
   --ruler-size: 20px;
   --panel-w: 260px;
   --menubar-h: 24px;
-  --controlbar-h: 32px;
   --statusbar-h: 22px;
   --tabbar-h: 34px;
 
@@ -804,107 +803,6 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .menu-recent button:disabled:hover {
   background: none;
   color: var(--ai-text-dim);
-}
-
-/* ============ CONTROL BAR ============ */
-#control-bar {
-  height: var(--controlbar-h);
-  background: var(--ai-panel);
-  border-bottom: 1px solid var(--ai-border);
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-#control-bar-content {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.ctrl-group {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.ctrl-group label {
-  color: var(--ai-text-dim);
-  font-size: 11px;
-  min-width: 12px;
-}
-
-.ctrl-group input[type="number"],
-.ctrl-group input[type="text"] {
-  width: 54px;
-  height: 20px;
-  background: var(--ai-input);
-  color: var(--ai-text);
-  border: 1px solid var(--ai-border-light);
-  border-radius: 2px;
-  padding: 0 4px;
-  text-align: center;
-}
-
-.ctrl-group input:focus {
-  outline: none;
-  border-color: var(--ai-accent);
-}
-
-.ctrl-color-swatch {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.ctrl-color-swatch input[type="color"] {
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--ai-border-light);
-  border-radius: 2px;
-  background: none;
-  cursor: pointer;
-  padding: 1px;
-}
-
-.ctrl-none-btn {
-  width: 18px;
-  height: 18px;
-  background: var(--ai-btn);
-  border: none;
-  border-radius: 2px;
-  color: var(--ai-text-dim);
-  cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background 0.1s;
-}
-
-.ctrl-none-btn:hover {
-  background: var(--ai-btn-hover);
-  color: var(--ai-text);
-}
-
-.ctrl-none-btn.active {
-  background: var(--ai-danger);
-  color: white;
-}
-
-.ctrl-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--ai-border-light);
-  margin: 0 6px;
-}
-
-.ctrl-unit {
-  color: var(--ai-text-dim);
-  font-size: 11px;
 }
 
 /* ============ WORKSPACE ============ */
@@ -2653,14 +2551,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   margin-left: 2px;
 }
 
-.ctrl-unit {
-  font-size: 11px;
-  color: var(--ai-text-dim);
-  margin-left: 1px;
-  margin-right: 4px;
-}
-
-#ctrl-rotation, #prop-rotation {
+#prop-rotation {
   width: 52px;
 }
 

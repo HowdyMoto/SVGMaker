@@ -13,7 +13,7 @@
  * Alt/Option = ×0.1 (fine).
  *
  * Wired through event delegation + a MutationObserver, so inputs created at
- * runtime (control-bar rebuilds, color picker, gradient stops, …) are covered
+ * runtime (panel rebuilds, color picker, gradient stops, …) are covered
  * automatically. Values are written via the field's own `input`/`change` events,
  * so existing listeners react as if typed: `input` fires live during the drag,
  * one `change` fires on release.
