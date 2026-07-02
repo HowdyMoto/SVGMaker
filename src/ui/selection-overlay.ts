@@ -208,28 +208,33 @@ function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): voi
 
   appendResizeHandles(overlayGroup, x, y, w, h);
 
-  // Rotation handle
-  const rotOffset = 20;
-  const rotLine = document.createElementNS(NS, 'line');
-  rotLine.setAttribute('x1', String(x + w / 2));
-  rotLine.setAttribute('y1', String(y));
-  rotLine.setAttribute('x2', String(x + w / 2));
-  rotLine.setAttribute('y2', String(y - rotOffset));
-  rotLine.setAttribute('stroke', tokens.selectionAccent);
-  rotLine.setAttribute('stroke-width', '1');
-  rotLine.setAttribute('pointer-events', 'none');
-  overlayGroup.appendChild(rotLine);
+  // Rotation handle — omitted for frames. A frame doubles as an artboard / export
+  // unit, and export, rulers, grid and snapping all assume it's axis-aligned; a
+  // rotation would render but silently break those. (Illustrator likewise forbids
+  // rotating an artboard.) Rotate the content, or a group, instead.
+  if (shape.type !== 'frame') {
+    const rotOffset = 20;
+    const rotLine = document.createElementNS(NS, 'line');
+    rotLine.setAttribute('x1', String(x + w / 2));
+    rotLine.setAttribute('y1', String(y));
+    rotLine.setAttribute('x2', String(x + w / 2));
+    rotLine.setAttribute('y2', String(y - rotOffset));
+    rotLine.setAttribute('stroke', tokens.selectionAccent);
+    rotLine.setAttribute('stroke-width', '1');
+    rotLine.setAttribute('pointer-events', 'none');
+    overlayGroup.appendChild(rotLine);
 
-  const rotCircle = document.createElementNS(NS, 'circle');
-  rotCircle.setAttribute('cx', String(x + w / 2));
-  rotCircle.setAttribute('cy', String(y - rotOffset));
-  rotCircle.setAttribute('r', '5');
-  rotCircle.setAttribute('fill', 'white');
-  rotCircle.setAttribute('stroke', tokens.selectionAccent);
-  rotCircle.setAttribute('stroke-width', '1.5');
-  rotCircle.setAttribute('data-handle', 'rotate');
-  rotCircle.setAttribute('style', 'cursor: crosshair');
-  overlayGroup.appendChild(rotCircle);
+    const rotCircle = document.createElementNS(NS, 'circle');
+    rotCircle.setAttribute('cx', String(x + w / 2));
+    rotCircle.setAttribute('cy', String(y - rotOffset));
+    rotCircle.setAttribute('r', '5');
+    rotCircle.setAttribute('fill', 'white');
+    rotCircle.setAttribute('stroke', tokens.selectionAccent);
+    rotCircle.setAttribute('stroke-width', '1.5');
+    rotCircle.setAttribute('data-handle', 'rotate');
+    rotCircle.setAttribute('style', 'cursor: crosshair');
+    overlayGroup.appendChild(rotCircle);
+  }
 
   // Anchor dots for line-like shapes
   if (shape.type === 'line' || shape.type === 'polyline' || shape.type === 'path') {
@@ -326,28 +331,32 @@ function drawMultiSelection(state: AppState, selectionLayer: SVGGElement, ids: s
 
   appendResizeHandles(selectionLayer, minX, minY, cw, ch);
 
-  // Rotation handle
-  const rotOffset = 20;
-  const rotLine = document.createElementNS(NS, 'line');
-  rotLine.setAttribute('x1', String(minX + cw / 2));
-  rotLine.setAttribute('y1', String(minY));
-  rotLine.setAttribute('x2', String(minX + cw / 2));
-  rotLine.setAttribute('y2', String(minY - rotOffset));
-  rotLine.setAttribute('stroke', tokens.selectionAccent);
-  rotLine.setAttribute('stroke-width', '1');
-  rotLine.setAttribute('pointer-events', 'none');
-  selectionLayer.appendChild(rotLine);
+  // Rotation handle — omitted if a frame is in the selection (frames stay
+  // axis-aligned so export/rulers/grid keep working; see drawSingleSelection).
+  const hasFrame = ids.some(id => state.findShapeById(id)?.type === 'frame');
+  if (!hasFrame) {
+    const rotOffset = 20;
+    const rotLine = document.createElementNS(NS, 'line');
+    rotLine.setAttribute('x1', String(minX + cw / 2));
+    rotLine.setAttribute('y1', String(minY));
+    rotLine.setAttribute('x2', String(minX + cw / 2));
+    rotLine.setAttribute('y2', String(minY - rotOffset));
+    rotLine.setAttribute('stroke', tokens.selectionAccent);
+    rotLine.setAttribute('stroke-width', '1');
+    rotLine.setAttribute('pointer-events', 'none');
+    selectionLayer.appendChild(rotLine);
 
-  const rotCircle = document.createElementNS(NS, 'circle');
-  rotCircle.setAttribute('cx', String(minX + cw / 2));
-  rotCircle.setAttribute('cy', String(minY - rotOffset));
-  rotCircle.setAttribute('r', '5');
-  rotCircle.setAttribute('fill', 'white');
-  rotCircle.setAttribute('stroke', tokens.selectionAccent);
-  rotCircle.setAttribute('stroke-width', '1.5');
-  rotCircle.setAttribute('data-handle', 'rotate');
-  rotCircle.setAttribute('style', 'cursor: crosshair');
-  selectionLayer.appendChild(rotCircle);
+    const rotCircle = document.createElementNS(NS, 'circle');
+    rotCircle.setAttribute('cx', String(minX + cw / 2));
+    rotCircle.setAttribute('cy', String(minY - rotOffset));
+    rotCircle.setAttribute('r', '5');
+    rotCircle.setAttribute('fill', 'white');
+    rotCircle.setAttribute('stroke', tokens.selectionAccent);
+    rotCircle.setAttribute('stroke-width', '1.5');
+    rotCircle.setAttribute('data-handle', 'rotate');
+    rotCircle.setAttribute('style', 'cursor: crosshair');
+    selectionLayer.appendChild(rotCircle);
+  }
 
   // Selection count badge
   const badge = document.createElementNS(NS, 'text');

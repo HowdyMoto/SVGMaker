@@ -119,6 +119,9 @@ export class SelectTool extends BaseTool {
       }
 
       if (handle === 'rotate') {
+        // Frames stay axis-aligned (export/rulers/grid depend on it), so no rotate
+        // handle is drawn for them; guard here too in case one is ever triggered.
+        if (shapes.some(s => s.type === 'frame')) return;
         this.rotating = true;
         this.state.setInteractive(true);
         if (isMulti) {
