@@ -79,7 +79,7 @@ const toolLabels: Record<ToolName, string> = {
   eyedropper: 'Eyedropper Tool',
   star: 'Star Tool',
   polygon: 'Polygon Tool',
-  artboard: 'Artboard Tool',
+  artboard: 'Frame Tool',
   image: 'Image Tool',
   shapeBuilder: 'Shape Builder Tool',
   width: 'Width Tool',

@@ -40,13 +40,13 @@ export function showExportDialog(state: AppState): void {
   // all come from the shared Modal primitive (ui/modal.ts).
   const modal = openModal({
     id: 'export-dialog-overlay',
-    ariaLabel: 'Export Artboards',
+    ariaLabel: 'Export Frames',
     dialogClass: 'export-dialog',
   });
   if (!modal) return; // already open
   const { dialog, close } = modal;
 
-  dialog.appendChild(createModalHeader('Export Artboards'));
+  dialog.appendChild(createModalHeader('Export Frames'));
 
   const body = createModalBody();
 
@@ -97,7 +97,7 @@ export function showExportDialog(state: AppState): void {
   abField.className = 'field';
   const abLabel = document.createElement('label');
   abLabel.className = 'field-label';
-  abLabel.textContent = 'Artboards to export';
+  abLabel.textContent = 'Frames to export';
   abField.appendChild(abLabel);
 
   const actions = document.createElement('div');
@@ -130,7 +130,7 @@ export function showExportDialog(state: AppState): void {
     const bake = bakeCb.checked;
     const textMode = textSelect.value as TextMode;
     const selectedIds = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
-    if (selectedIds.length === 0) { alert('Select at least one artboard.'); return; }
+    if (selectedIds.length === 0) { alert('Select at least one frame.'); return; }
 
     exportBtn.textContent = 'Exporting...';
     exportBtn.style.opacity = '0.6';
