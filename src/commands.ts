@@ -102,10 +102,10 @@ export const COMMANDS: Command[] = [
   { id: 'file.import-svg', label: 'Append SVG…', kind: 'action', run: (c) => importSVG(c.state) },
   { id: 'file.import-image', label: 'Append Image…', kind: 'action', run: (c) => pickAndImportImage(c.state) },
   {
-    id: 'file.export-svg', label: 'Export Active Artboard…', kind: 'action',
+    id: 'file.export-svg', label: 'Export Active Frame…', kind: 'action',
     accel: ['Mod+Shift+S', 'Mod+E'], run: (c) => { void exportSVG(c.state); },
   },
-  { id: 'file.export-artboards', label: 'Export Artboards…', kind: 'action', accel: 'Mod+Alt+E', run: (c) => showExportDialog(c.state) },
+  { id: 'file.export-artboards', label: 'Export Frames…', kind: 'action', accel: 'Mod+Alt+E', run: (c) => showExportDialog(c.state) },
   { id: 'file.export-tracecraft', label: 'Export for TraceCraft…', kind: 'action', run: (c) => exportTrack(c.state) },
   {
     id: 'export.bake-transforms', label: 'Bake Transforms on Export', kind: 'toggle',
@@ -246,7 +246,7 @@ export const COMMANDS: Command[] = [
   { id: 'tool.image', label: 'Image Tool', kind: 'tool', run: (c) => c.setTool('image') },
   { id: 'tool.eyedropper', label: 'Eyedropper Tool', kind: 'tool', accel: 'I', run: (c) => c.setTool('eyedropper') },
   { id: 'tool.width', label: 'Width Tool', kind: 'tool', accel: 'Shift+W', run: (c) => c.setTool('width') },
-  { id: 'tool.artboard', label: 'Artboard Tool', kind: 'tool', accel: 'Shift+O', run: (c) => c.setTool('artboard') },
+  { id: 'tool.artboard', label: 'Frame Tool', kind: 'tool', accel: 'Shift+O', run: (c) => c.setTool('artboard') },
   { id: 'tool.hand', label: 'Hand Tool', kind: 'tool', accel: 'H', run: (c) => c.setTool('hand') },
   { id: 'tool.zoom', label: 'Zoom Tool', kind: 'tool', accel: 'Z', run: (c) => c.setTool('zoom') },
 ];
