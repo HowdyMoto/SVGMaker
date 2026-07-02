@@ -18,12 +18,14 @@ export class TextTool extends BaseTool {
 
   onMouseDown(pt: Point, e: MouseEvent): void {
     if (this.editor) { this.commit(); return; } // a click elsewhere commits the open editor
+    e.preventDefault(); // don't let the mousedown steal focus back from the editor
     const textEl = (e.target as Element).closest?.('text') as SVGTextElement | null;
     if (textEl && textEl.id) this.editExisting(textEl);
     else this.openEditor(pt, null, '');
   }
 
   onDoubleClick(_pt: Point, e: MouseEvent): void {
+    e.preventDefault();
     const textEl = (e.target as Element).closest?.('text') as SVGTextElement | null;
     if (textEl && textEl.id) this.editExisting(textEl);
   }
