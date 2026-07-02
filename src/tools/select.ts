@@ -597,7 +597,14 @@ export class SelectTool extends BaseTool {
       }
       // Target is outside the entered group → unscoped (top-level) resolution.
     }
-    return chain[chain.length - 1];
+    // Top-level resolution: resolve a click up through GROUPS (Adobe-style: click
+    // selects the outermost group, double-click enters it). But a FRAME is a
+    // container/artboard, not a selectable-as-a-unit group — clicking its contents
+    // must select the contents (Figma & Illustrator both do this). So return the
+    // top-most NON-frame ancestor, falling back to the frame only if that's all
+    // that was hit.
+    const nonFrame = chain.filter(el => !el.hasAttribute('data-frame'));
+    return nonFrame.length ? nonFrame[nonFrame.length - 1] : chain[chain.length - 1];
   }
 
   /** Is `el` a descendant of the currently-entered group? */
