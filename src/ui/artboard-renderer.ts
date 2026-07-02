@@ -43,8 +43,8 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
   const isArtboardTool = state.currentTool === 'artboard';
 
   for (const ab of state.artboards) {
-    const isActive = ab.id === state.activeArtboardId;
-    const isSelected = ab.id === state.selectedArtboardId && isArtboardTool;
+    const isActive = ab.id === state.activeFrameId;
+    const isSelected = ab.id === state.selectedFrameId && isArtboardTool;
 
     // Frames render their own background + clip (the .frame-bg rect inside the
     // frame <g>); this renderer only draws overlay CHROME (border, label, handles).

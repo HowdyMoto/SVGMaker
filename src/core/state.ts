@@ -79,7 +79,6 @@ export class AppState {
   snapEnabled = true;
 
   private idCounter = 0;
-  private abCounter = 0;
   /** Undo/redo stack. Owns the index/branching/cap bookkeeping; this class
    *  supplies the document capture/restore via {@link captureSnapshot} /
    *  {@link restoreHistory}. See core/history.ts. */
@@ -92,8 +91,8 @@ export class AppState {
   private onChangeCallback: () => void;
 
   artboards: Artboard[] = [];
-  activeArtboardId: string | null = null;
-  selectedArtboardId: string | null = null; // used by artboard tool
+  activeFrameId: string | null = null;
+  selectedFrameId: string | null = null; // used by artboard tool
 
   /** Lets a tool ask the app to switch tools (e.g. a draw tool returns to Select
    *  after placing one shape). Wired by main.ts to setTool; null in headless use. */
@@ -226,7 +225,7 @@ export class AppState {
     // artboards cache from them.
     this.drawingLayer.appendChild(this.createFrameElement(0, 0, 960, 540, 'Frame 1'));
     this.rebuildShapesFromDOM();
-    this.activeArtboardId = this.artboards[0]?.id ?? null;
+    this.activeFrameId = this.artboards[0]?.id ?? null;
     this.saveHistory();
     this.markClean();
   }
@@ -346,7 +345,7 @@ export class AppState {
   /** Grid-snap parameters for the active frame (origin + spacing), or null when no
    *  active frame has snapping on. Used by the select tool to quantize gestures. */
   activeGridSnap(): { ox: number; oy: number; step: number } | null {
-    const id = this.activeArtboardId;
+    const id = this.activeFrameId;
     if (!id) return null;
     const ab = this.artboards.find(a => a.id === id);
     if (!ab || !ab.grid || !ab.grid.snap) return null;
@@ -356,8 +355,8 @@ export class AppState {
   /** Rebuild the derived artboards cache from the top-level frame shapes. */
   private syncArtboardsCache(): void {
     this.artboards = this.shapes.filter(s => s.type === 'frame').map(s => this.frameToArtboard(s));
-    if (!this.artboards.some(a => a.id === this.activeArtboardId)) {
-      this.activeArtboardId = this.artboards[0]?.id ?? null;
+    if (!this.artboards.some(a => a.id === this.activeFrameId)) {
+      this.activeFrameId = this.artboards[0]?.id ?? null;
     }
   }
 
@@ -366,7 +365,7 @@ export class AppState {
   }
 
   getActiveFrame(): ShapeData | null {
-    return this.frameShapeById(this.activeArtboardId ?? '')
+    return this.frameShapeById(this.activeFrameId ?? '')
       ?? this.shapes.find(s => s.type === 'frame') ?? null;
   }
 
@@ -408,7 +407,7 @@ export class AppState {
   }
 
   getActiveArtboard(): Artboard {
-    return this.artboards.find(a => a.id === this.activeArtboardId)
+    return this.artboards.find(a => a.id === this.activeFrameId)
       ?? this.artboards[0]
       // Safety net for documents with no frame yet (e.g. an old file mid-migration):
       // a default view so rulers/export/status never read `undefined`.
@@ -417,10 +416,6 @@ export class AppState {
 
   getArtboardById(id: string): Artboard | undefined {
     return this.artboards.find(a => a.id === id);
-  }
-
-  nextArtboardId(): string {
-    return `ab-${++this.abCounter}`;
   }
 
   /** Create a frame (world coords). Returns the new frame shape's id. */
@@ -438,16 +433,18 @@ export class AppState {
     }
     this.rebuildShapesFromDOM();
     // Only TOP-LEVEL frames act as artboards; a nested frame is a clipped container.
-    if (!container) this.activeArtboardId = g.id;
+    if (!container) this.activeFrameId = g.id;
     this.selectedShapeIds = [g.id];
     this.saveHistory();
     this.onChangeCallback();
     return g.id;
   }
 
-  /** Back-compat: the artboard tool passes an Artboard-shaped object. */
-  addArtboard(ab: Artboard): void {
-    this.addFrame(ab.x, ab.y, ab.width, ab.height, ab.name);
+  /** Create a frame from an Artboard-shaped request (the Frame tool's adapter);
+   *  returns the new frame's id. addFrame mints its own shape-N id, so the
+   *  request's `id` is ignored. */
+  addArtboard(ab: Artboard): string {
+    return this.addFrame(ab.x, ab.y, ab.width, ab.height, ab.name);
   }
 
   /**
@@ -534,8 +531,8 @@ export class AppState {
     clone.setAttribute('data-name', `${cur.name} copy`);
     this.drawingLayer.appendChild(clone);
     this.rebuildShapesFromDOM();
-    this.activeArtboardId = newId;
-    this.selectedArtboardId = newId;
+    this.activeFrameId = newId;
+    this.selectedFrameId = newId;
     this.selectedShapeIds = [newId];
     this.saveHistory();
     this.onChangeCallback();
@@ -544,7 +541,7 @@ export class AppState {
   removeArtboard(id: string): void {
     if (this.shapes.filter(s => s.type === 'frame').length <= 1) return; // keep ≥1
     if (!this.detachShape(id)) return;
-    if (this.selectedArtboardId === id) this.selectedArtboardId = null;
+    if (this.selectedFrameId === id) this.selectedFrameId = null;
     this.rebuildShapesFromDOM();
     this.saveHistory();
     this.onChangeCallback();
@@ -587,7 +584,7 @@ export class AppState {
   }
 
   setActiveArtboard(id: string): void {
-    this.activeArtboardId = id;
+    this.activeFrameId = id;
     this.onChangeCallback();
   }
 
@@ -2781,8 +2778,8 @@ export class AppState {
     // A blank document starts with a default frame (like the constructor).
     this.drawingLayer.appendChild(this.createFrameElement(0, 0, 960, 540, 'Frame 1'));
     this.rebuildShapesFromDOM();
-    this.activeArtboardId = this.artboards[0]?.id ?? null;
-    this.selectedArtboardId = null;
+    this.activeFrameId = this.artboards[0]?.id ?? null;
+    this.selectedFrameId = null;
     this.saveHistory();
     this.onChangeCallback();
   }

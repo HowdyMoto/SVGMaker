@@ -132,13 +132,13 @@ export const COMMANDS: Command[] = [
     id: 'edit.delete', label: 'Delete', kind: 'action', accel: ['Delete', 'Backspace'],
     enabled: (c) => {
       const s = c.state;
-      if (s.activePanel === 'artboards') return !!s.activeArtboardId && s.artboards.length > 1;
+      if (s.activePanel === 'artboards') return !!s.activeFrameId && s.artboards.length > 1;
       if (s.activePanel === 'symbols') return !!s.selectedSymbolId;
       return hasSelection(c);
     },
     run: (c) => {
       const s = c.state;
-      if (s.activePanel === 'artboards') { if (s.activeArtboardId) s.removeArtboard(s.activeArtboardId); return; }
+      if (s.activePanel === 'artboards') { if (s.activeFrameId) s.removeArtboard(s.activeFrameId); return; }
       if (s.activePanel === 'symbols') { if (s.selectedSymbolId) s.removeSymbol(s.selectedSymbolId); return; }
       s.removeSelected();
     },
@@ -187,10 +187,10 @@ export const COMMANDS: Command[] = [
     // Grid / rulers now belong to the ACTIVE FRAME (see the Frame panel). These
     // View items are quick toggles for that frame; disabled with no frame.
     id: 'view.toggle-grid', label: 'Show Grid', kind: 'toggle', accel: "Mod+'",
-    enabled: (c) => !!c.state.activeArtboardId,
-    checked: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id)?.visible; },
+    enabled: (c) => !!c.state.activeFrameId,
+    checked: (c) => { const id = c.state.activeFrameId; return !!id && !!c.state.getFrameGrid(id)?.visible; },
     run: (c) => {
-      const id = c.state.activeArtboardId; if (!id) return;
+      const id = c.state.activeFrameId; if (!id) return;
       const g = c.state.getFrameGrid(id);
       if (g) c.state.setFrameGrid(id, { ...g, visible: !g.visible });
       else c.state.setFrameGrid(id, { size: 8, subdivisions: 4, color: '#7f8fa6', visible: true, snap: false });
@@ -198,10 +198,10 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'view.toggle-grid-snap', label: 'Snap to Grid', kind: 'toggle',
-    enabled: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id); },
-    checked: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id)?.snap; },
+    enabled: (c) => { const id = c.state.activeFrameId; return !!id && !!c.state.getFrameGrid(id); },
+    checked: (c) => { const id = c.state.activeFrameId; return !!id && !!c.state.getFrameGrid(id)?.snap; },
     run: (c) => {
-      const id = c.state.activeArtboardId; if (!id) return;
+      const id = c.state.activeFrameId; if (!id) return;
       const g = c.state.getFrameGrid(id); if (!g) return;
       c.state.setFrameGrid(id, { ...g, snap: !g.snap });
     },
@@ -213,9 +213,9 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'view.toggle-rulers', label: 'Show Frame Rulers', kind: 'toggle',
-    enabled: (c) => !!c.state.activeArtboardId,
-    checked: (c) => { const id = c.state.activeArtboardId; return !!id && c.state.getFrameRulers(id); },
-    run: (c) => { const id = c.state.activeArtboardId; if (id) c.state.setFrameRulers(id, !c.state.getFrameRulers(id)); },
+    enabled: (c) => !!c.state.activeFrameId,
+    checked: (c) => { const id = c.state.activeFrameId; return !!id && c.state.getFrameRulers(id); },
+    run: (c) => { const id = c.state.activeFrameId; if (id) c.state.setFrameRulers(id, !c.state.getFrameRulers(id)); },
   },
 
   // ---- Color defaults (affect the style applied to NEW shapes) ----
