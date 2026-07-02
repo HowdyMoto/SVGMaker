@@ -1,6 +1,8 @@
 import './style.css';
 import { AppState } from './core/state';
 import { CanvasController } from './core/canvas';
+import { DocumentManager } from './core/document-manager';
+import { setupTabBar, renderTabBar } from './ui/tab-bar';
 import { SelectTool } from './tools/select';
 import { NodeEditTool } from './tools/node-edit';
 import { RectTool } from './tools/rect';
@@ -54,6 +56,8 @@ const guidesLayer = document.getElementById('guides-layer') as unknown as SVGGEl
 // State & canvas
 const state = new AppState(drawingLayer, onStateChange);
 const canvas = new CanvasController(svgCanvas);
+// Multiple open documents (tabs). Tab 0 adopts the boot document.
+const docs = new DocumentManager(state, canvas, renderTabBar);
 
 // Tool label map
 const toolLabels: Record<ToolName, string> = {
@@ -143,6 +147,7 @@ function onStateChange(): void {
   updateLayersPanel(state);
   updateSymbolsPanel(state);
   updatePathfinderPanel(state);
+  renderTabBar(); // keep the active tab's title/dirty current
 
   noteDocumentChanged(); // schedule a debounced autosave if this is a cloud doc
 }
@@ -319,8 +324,10 @@ setupColorPicker(state);
 setupAlign(state);
 setupPathfinder(state);
 setupTooltips();
+setupTabBar(docs);
 // Dev-only debug handle (stripped from production builds).
-if (import.meta.env.DEV) (window as unknown as { state: AppState }).state = state;
+if (import.meta.env.DEV) (window as unknown as { state: AppState; docs: DocumentManager }).state = state;
+if (import.meta.env.DEV) (window as unknown as { state: AppState; docs: DocumentManager }).docs = docs;
 setupSymbolButtons(commandCtx);
 setupRecentFilesMenu(state);
 setupAccountUI(); // no-op until Supabase env vars are set (see .env.example)
@@ -394,7 +401,7 @@ window.addEventListener('resize', () => {
 
 // Warn before closing/reloading the tab with unsaved changes.
 window.addEventListener('beforeunload', (e) => {
-  if (state.dirty) {
+  if (docs.anyDirty()) { // any open tab with unsaved edits
     e.preventDefault();
     e.returnValue = '';
   }

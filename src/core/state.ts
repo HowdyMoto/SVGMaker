@@ -3,7 +3,7 @@ import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
-import { History } from './history';
+import { History, type HistorySnapshot } from './history';
 import { PaintRegistry } from './paint-registry';
 import { ClipboardManager, type ClipboardHost } from './clipboard';
 import { SymbolRegistry, type SymbolHost } from './symbol-registry';
@@ -1039,6 +1039,11 @@ export class AppState {
       artboardsJson: JSON.stringify(this.artboards),
     };
   }
+
+  /** Snapshot / restore the whole undo stack (used by the document tab manager to
+   *  cache each tab's history). */
+  exportHistory(): HistorySnapshot { return this.historyMgr.exportState(); }
+  importHistory(s: HistorySnapshot): void { this.historyMgr.restoreState(s); }
 
   /** True when there are edits since the last save/open/new. */
   get dirty(): boolean { return this.historyMgr.dirty; }
@@ -2242,11 +2247,10 @@ export class AppState {
     this.selectedShapeIds = [];
     this.clearDefs();
     this.selectedSymbolId = null;
-    this.artboards = [{
-      id: this.nextArtboardId(),
-      x: 0, y: 0, width: 960, height: 540, name: 'Artboard 1',
-    }];
-    this.activeArtboardId = this.artboards[0].id;
+    // A blank document starts with a default frame (like the constructor).
+    this.drawingLayer.appendChild(this.createFrameElement(0, 0, 960, 540, 'Frame 1'));
+    this.rebuildShapesFromDOM();
+    this.activeArtboardId = this.artboards[0]?.id ?? null;
     this.selectedArtboardId = null;
     this.saveHistory();
     this.onChangeCallback();
