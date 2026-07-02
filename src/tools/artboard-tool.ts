@@ -92,9 +92,11 @@ export class ArtboardTool extends BaseTool {
     } else if (this.mode === 'moving' && this.movingAb) {
       const dx = pt.x - this.startPt.x;
       const dy = pt.y - this.startPt.y;
-      this.movingAb.x = Math.round(this.moveOrigX + dx);
-      this.movingAb.y = Math.round(this.moveOrigY + dy);
-      this.state.onChange_public();
+      // Moving a frame moves its contents (they live inside its <g>).
+      this.state.updateArtboard(this.movingAb.id, {
+        x: Math.round(this.moveOrigX + dx),
+        y: Math.round(this.moveOrigY + dy),
+      });
     } else if (this.mode === 'resizing' && this.resizingAb) {
       const dx = pt.x - this.startPt.x;
       const dy = pt.y - this.startPt.y;
@@ -106,11 +108,9 @@ export class ArtboardTool extends BaseTool {
       if (this.resizeHandle.includes('n')) { y += dy; h -= dy; }
       if (w < 20) w = 20;
       if (h < 20) h = 20;
-      this.resizingAb.x = Math.round(x);
-      this.resizingAb.y = Math.round(y);
-      this.resizingAb.width = Math.round(w);
-      this.resizingAb.height = Math.round(h);
-      this.state.onChange_public();
+      this.state.updateArtboard(this.resizingAb.id, {
+        x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h),
+      });
     }
   }
 

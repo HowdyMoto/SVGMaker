@@ -3,7 +3,7 @@ import { ensureSvgNamespaces } from './svg-ns';
 import { sanitizePathData } from './path-sanitize';
 import { sanitizeSvgElement, sanitizeSvgMarkup } from './svg-sanitize';
 import { PathEditSession } from './path-edit';
-import { History } from './history';
+import { History, type HistorySnapshot } from './history';
 import { PaintRegistry } from './paint-registry';
 import { ClipboardManager, type ClipboardHost } from './clipboard';
 import { SymbolRegistry, type SymbolHost } from './symbol-registry';
@@ -216,16 +216,95 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.symbolRegistry = new SymbolRegistry(symbolHost);
-    // Create default artboard
-    this.artboards.push({
-      id: this.nextArtboardId(),
-      x: 0, y: 0,
-      width: 960, height: 540,
-      name: 'Artboard 1',
-    });
-    this.activeArtboardId = this.artboards[0].id;
+    // Create the default frame ("Frame 1"). Frames are real <g data-frame>
+    // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
+    // artboards cache from them.
+    this.drawingLayer.appendChild(this.createFrameElement(0, 0, 960, 540, 'Frame 1'));
+    this.rebuildShapesFromDOM();
+    this.activeArtboardId = this.artboards[0]?.id ?? null;
     this.saveHistory();
     this.markClean();
+  }
+
+  // ---- Frames (Figma-style containers; the artboards cache derives from them) ----
+  //
+  // A frame is a `<g data-frame>` container-shape in #drawing-layer with an inline
+  // <clipPath> + .frame-bg rect + children in frame-local coords. `this.artboards`
+  // is a DERIVED cache (Artboard views: id/x/y/w/h/name) kept in sync by
+  // syncArtboardsCache() so all the read-only callers (rulers/export/snapping/
+  // status bar/align) keep working unchanged.
+
+  private createFrameElement(x: number, y: number, w: number, h: number, name: string): SVGGElement {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const g = document.createElementNS(SVG, 'g');
+    const id = this.nextId();
+    g.id = id;
+    g.setAttribute('data-frame', '');
+    g.setAttribute('data-name', name);
+    g.setAttribute('data-frame-w', String(w));
+    g.setAttribute('data-frame-h', String(h));
+    if (x !== 0 || y !== 0) g.setAttribute('transform', `translate(${x} ${y})`);
+    const clipId = `frameclip-${id.replace('shape-', '')}`;
+    g.setAttribute('clip-path', `url(#${clipId})`);
+    const clip = document.createElementNS(SVG, 'clipPath');
+    clip.setAttribute('id', clipId);
+    clip.setAttribute('clipPathUnits', 'userSpaceOnUse');
+    const clipRect = document.createElementNS(SVG, 'rect');
+    clipRect.setAttribute('x', '0'); clipRect.setAttribute('y', '0');
+    clipRect.setAttribute('width', String(w)); clipRect.setAttribute('height', String(h));
+    clip.appendChild(clipRect);
+    g.appendChild(clip);
+    const bg = document.createElementNS(SVG, 'rect');
+    bg.setAttribute('class', 'frame-bg');
+    bg.setAttribute('x', '0'); bg.setAttribute('y', '0');
+    bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h));
+    bg.setAttribute('fill', '#ffffff');
+    bg.setAttribute('pointer-events', 'none');
+    g.appendChild(bg);
+    return g;
+  }
+
+  /** World translate of a frame's `<g>` (its position). */
+  private frameTranslate(el: SVGElement): { x: number; y: number } {
+    const m = (el as unknown as SVGGraphicsElement).transform.baseVal.consolidate()?.matrix;
+    return { x: m?.e ?? 0, y: m?.f ?? 0 };
+  }
+
+  private frameToArtboard(s: ShapeData): Artboard {
+    const { x, y } = this.frameTranslate(s.element);
+    return {
+      id: s.id, x, y,
+      width: parseFloat(s.element.getAttribute('data-frame-w') ?? '0'),
+      height: parseFloat(s.element.getAttribute('data-frame-h') ?? '0'),
+      name: s.name,
+    };
+  }
+
+  /** Rebuild the derived artboards cache from the top-level frame shapes. */
+  private syncArtboardsCache(): void {
+    this.artboards = this.shapes.filter(s => s.type === 'frame').map(s => this.frameToArtboard(s));
+    if (!this.artboards.some(a => a.id === this.activeArtboardId)) {
+      this.activeArtboardId = this.artboards[0]?.id ?? null;
+    }
+  }
+
+  private frameShapeById(id: string): ShapeData | undefined {
+    return this.shapes.find(s => s.type === 'frame' && s.id === id);
+  }
+
+  getActiveFrame(): ShapeData | null {
+    return this.frameShapeById(this.activeArtboardId ?? '')
+      ?? this.shapes.find(s => s.type === 'frame') ?? null;
+  }
+
+  /** The top-level frame whose world bounds contain (cx, cy), else null. */
+  private frameAtPoint(cx: number, cy: number): ShapeData | null {
+    const frames = this.shapes.filter(s => s.type === 'frame');
+    for (let i = frames.length - 1; i >= 0; i--) { // topmost first
+      const a = this.frameToArtboard(frames[i]);
+      if (cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height) return frames[i];
+    }
+    return null;
   }
 
   // Keep the legacy getter for backward compat with align, export, etc.
@@ -234,7 +313,11 @@ export class AppState {
   }
 
   getActiveArtboard(): Artboard {
-    return this.artboards.find(a => a.id === this.activeArtboardId) ?? this.artboards[0];
+    return this.artboards.find(a => a.id === this.activeArtboardId)
+      ?? this.artboards[0]
+      // Safety net for documents with no frame yet (e.g. an old file mid-migration):
+      // a default view so rulers/export/status never read `undefined`.
+      ?? { id: '', x: 0, y: 0, width: 960, height: 540, name: 'Frame' };
   }
 
   getArtboardById(id: string): Artboard | undefined {
@@ -245,74 +328,139 @@ export class AppState {
     return `ab-${++this.abCounter}`;
   }
 
-  addArtboard(ab: Artboard): void {
-    this.artboards.push(ab);
-    this.activeArtboardId = ab.id;
+  /** Create a frame (world coords). Returns the new frame shape's id. */
+  addFrame(x: number, y: number, w: number, h: number, name: string): string {
+    const g = this.createFrameElement(x, y, w, h, name);
+    this.drawingLayer.appendChild(g);
+    this.rebuildShapesFromDOM();
+    this.activeArtboardId = g.id;
+    this.selectedShapeIds = [g.id];
     this.saveHistory();
     this.onChangeCallback();
+    return g.id;
+  }
+
+  /** Back-compat: the artboard tool passes an Artboard-shaped object. */
+  addArtboard(ab: Artboard): void {
+    this.addFrame(ab.x, ab.y, ab.width, ab.height, ab.name);
   }
 
   /**
-   * Duplicate an artboard along with the artwork sitting on it, placed to the
-   * right of the rightmost artboard (the same slot the "+" button uses).
+   * Migrate freshly-imported legacy content (no frames) into frame(s): for each
+   * legacy board, wrap the top-level shapes whose center falls inside it into a
+   * new frame (world→frame-local). No-op if the imported markup already has
+   * frames (a current-format doc). Does not save history (the caller does).
    */
-  duplicateArtboard(id: string): void {
-    const src = this.getArtboardById(id);
-    if (!src) return;
-
-    let maxRight = 0;
-    for (const ab of this.artboards) maxRight = Math.max(maxRight, ab.x + ab.width);
-    const dx = (maxRight + 40) - src.x;
-    const dy = 0;
-
-    // Clone every shape whose centre falls on the source artboard onto the copy.
-    for (const shape of this.getShapesOnArtboard(id)) {
-      const newEl = shape.element.cloneNode(true) as SVGElement;
-      const newId = this.nextId();
-      newEl.id = newId;
-      if (shape.type === 'group') this.reIdGroupChildren(newEl);
-      newEl.setAttribute('data-name', shape.name);
-      this.drawingLayer.appendChild(newEl); // in the DOM so transform offsets resolve
-      this.offsetElement(newEl, dx, dy);
-      this.shapes.push({
-        id: newId, type: shape.type, element: newEl, name: shape.name,
-        style: { ...shape.style }, visible: shape.visible, locked: shape.locked,
-        rotation: shape.rotation, symbolId: shape.symbolId,
-      });
+  migrateContentToFrames(boards: ReadonlyArray<{ x: number; y: number; width: number; height: number; name: string }>): void {
+    if (this.shapes.some(s => s.type === 'frame')) return; // already frames
+    const top = [...this.shapes];
+    const moved = new Set<string>();
+    for (const b of boards) {
+      const g = this.createFrameElement(b.x, b.y, b.width, b.height, b.name);
+      this.drawingLayer.appendChild(g);
+      for (const sh of top) {
+        if (moved.has(sh.id)) continue;
+        let bbox: DOMRect;
+        try { bbox = (sh.element as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
+        const cx = bbox.x + bbox.width / 2, cy = bbox.y + bbox.height / 2;
+        if (cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height) {
+          this.offsetElement(sh.element, -b.x, -b.y);
+          g.appendChild(sh.element);
+          moved.add(sh.id);
+        }
+      }
     }
+    this.rebuildShapesFromDOM();
+  }
 
-    const copy: Artboard = {
-      id: this.nextArtboardId(),
-      x: src.x + dx, y: src.y + dy,
-      width: src.width, height: src.height,
-      name: `${src.name} copy`,
-    };
-    this.artboards.push(copy);
-    this.activeArtboardId = copy.id;
-    this.selectedArtboardId = copy.id;
+  /**
+   * After a drag-move, reparent each moved shape into the frame now under its
+   * center (or out to the pasteboard), converting coords between world and
+   * frame-local space. Frames themselves are not reparented. Called by the Select
+   * tool before it saves history.
+   */
+  reparentAfterMove(ids: string[]): void {
+    let changed = false;
+    for (const id of ids) {
+      const shape = this.findShapeById(id);
+      if (!shape || shape.type === 'frame') continue;
+      const el = shape.element;
+      const curParent = el.parentElement as SVGElement | null;
+      const curFrameEl = curParent?.hasAttribute?.('data-frame') ? curParent : null;
+      const curOff = curFrameEl ? this.frameTranslate(curFrameEl) : { x: 0, y: 0 };
+      let bbox: DOMRect;
+      try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
+      const cx = curOff.x + bbox.x + bbox.width / 2;
+      const cy = curOff.y + bbox.y + bbox.height / 2;
+      const targetFrame = this.frameAtPoint(cx, cy);
+      const targetEl: SVGElement = targetFrame ? (targetFrame.element as SVGElement) : this.drawingLayer;
+      if (targetEl === curParent) continue; // unchanged
+      const tOff = targetFrame ? this.frameToArtboard(targetFrame) : { x: 0, y: 0 };
+      const dx = curOff.x - tOff.x, dy = curOff.y - tOff.y; // cur-local → target-local
+      if (dx !== 0 || dy !== 0) this.offsetElement(el, dx, dy);
+      targetEl.appendChild(el);
+      changed = true;
+    }
+    if (changed) this.rebuildShapesFromDOM();
+  }
+
+  duplicateArtboard(id: string): void {
+    const s = this.frameShapeById(id);
+    if (!s) return;
+    const cur = this.frameToArtboard(s);
+    let maxRight = 0;
+    for (const a of this.artboards) maxRight = Math.max(maxRight, a.x + a.width);
+    const nx = maxRight + 40, ny = cur.y;
+
+    const clone = s.element.cloneNode(true) as SVGElement;
+    const newId = this.nextId();
+    clone.id = newId;
+    this.reIdGroupChildren(clone); // fresh ids for descendants (incl. the clipPath)
+    const newClipId = `frameclip-${newId.replace('shape-', '')}`;
+    const clip = clone.querySelector('clipPath');
+    if (clip) clip.id = newClipId;
+    clone.setAttribute('clip-path', `url(#${newClipId})`);
+    clone.setAttribute('transform', `translate(${nx} ${ny})`);
+    clone.setAttribute('data-name', `${cur.name} copy`);
+    this.drawingLayer.appendChild(clone);
+    this.rebuildShapesFromDOM();
+    this.activeArtboardId = newId;
+    this.selectedArtboardId = newId;
+    this.selectedShapeIds = [newId];
     this.saveHistory();
     this.onChangeCallback();
   }
 
   removeArtboard(id: string): void {
-    if (this.artboards.length <= 1) return; // Must keep at least one
-    const idx = this.artboards.findIndex(a => a.id === id);
-    if (idx === -1) return;
-    this.artboards.splice(idx, 1);
-    if (this.activeArtboardId === id) {
-      this.activeArtboardId = this.artboards[0].id;
-    }
-    if (this.selectedArtboardId === id) {
-      this.selectedArtboardId = null;
-    }
+    if (this.shapes.filter(s => s.type === 'frame').length <= 1) return; // keep ≥1
+    if (!this.detachShape(id)) return;
+    if (this.selectedArtboardId === id) this.selectedArtboardId = null;
+    this.rebuildShapesFromDOM();
     this.saveHistory();
     this.onChangeCallback();
   }
 
   updateArtboard(id: string, updates: Partial<Omit<Artboard, 'id'>>): void {
-    const ab = this.artboards.find(a => a.id === id);
-    if (!ab) return;
-    Object.assign(ab, updates);
+    const s = this.frameShapeById(id);
+    if (!s) return;
+    const el = s.element;
+    const cur = this.frameToArtboard(s);
+    if (updates.name != null) { el.setAttribute('data-name', updates.name); s.name = updates.name; }
+    const nx = updates.x ?? cur.x, ny = updates.y ?? cur.y;
+    if (updates.x != null || updates.y != null) {
+      if (nx !== 0 || ny !== 0) el.setAttribute('transform', `translate(${nx} ${ny})`);
+      else el.removeAttribute('transform');
+    }
+    const nw = updates.width ?? cur.width, nh = updates.height ?? cur.height;
+    if (updates.width != null || updates.height != null) {
+      el.setAttribute('data-frame-w', String(nw));
+      el.setAttribute('data-frame-h', String(nh));
+      el.querySelectorAll('clipPath > rect, rect.frame-bg').forEach((r) => {
+        r.setAttribute('width', String(nw));
+        r.setAttribute('height', String(nh));
+      });
+    }
+    this.syncArtboardsCache();
     this.onChangeCallback();
   }
 
@@ -321,20 +469,9 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  /** Get all shapes whose center falls within the given artboard */
+  /** Shapes contained by a frame (real containment = the frame's children). */
   getShapesOnArtboard(abId: string): ShapeData[] {
-    const ab = this.getArtboardById(abId);
-    if (!ab) return [];
-    return this.shapes.filter(shape => {
-      try {
-        const bbox = (shape.element as unknown as SVGGraphicsElement).getBBox();
-        const cx = bbox.x + bbox.width / 2;
-        const cy = bbox.y + bbox.height / 2;
-        return cx >= ab.x && cx <= ab.x + ab.width && cy >= ab.y && cy <= ab.y + ab.height;
-      } catch {
-        return false;
-      }
-    });
+    return this.frameShapeById(abId)?.children ?? [];
   }
 
   onChange_public(): void {
@@ -387,11 +524,28 @@ export class AppState {
   }
 
   addShape(shape: ShapeData): void {
-    this.shapes.push(shape);
     this.drawingLayer.appendChild(shape.element);
+    // Figma-style auto-parent: a shape drawn inside a frame becomes its child
+    // (converted to frame-local coords). Otherwise it stays a top-level shape.
+    const frame = this.frameForNewElement(shape.element);
+    if (frame) {
+      const a = this.frameToArtboard(frame);
+      this.offsetElement(shape.element, -a.x, -a.y); // world → frame-local
+      frame.element.appendChild(shape.element);
+      this.rebuildShapesFromDOM(); // now nested under the frame → resync model
+    } else {
+      this.shapes.push(shape);
+    }
     this.selectedShapeIds = [shape.id];
     this.saveHistory();
     this.onChangeCallback();
+  }
+
+  /** The frame a freshly-drawn element falls into (by its center), or null. */
+  private frameForNewElement(el: SVGElement): ShapeData | null {
+    let bbox: DOMRect;
+    try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { return null; }
+    return this.frameAtPoint(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
   }
 
   /** Find a shape and the array that directly contains it (handles nesting). */
@@ -886,6 +1040,11 @@ export class AppState {
     };
   }
 
+  /** Snapshot / restore the whole undo stack (used by the document tab manager to
+   *  cache each tab's history). */
+  exportHistory(): HistorySnapshot { return this.historyMgr.exportState(); }
+  importHistory(s: HistorySnapshot): void { this.historyMgr.restoreState(s); }
+
   /** True when there are edits since the last save/open/new. */
   get dirty(): boolean { return this.historyMgr.dirty; }
 
@@ -921,19 +1080,9 @@ export class AppState {
       if (shape && shape.type === 'path' && d) this.pathEdit = new PathEditSession(d);
       else this.exitPathEdit(false);
     }
-    try {
-      this.artboards = JSON.parse(entry.artboardsJson);
-      // Restore abCounter
-      let maxAb = 0;
-      for (const ab of this.artboards) {
-        const m = ab.id.match(/ab-(\d+)/);
-        if (m) maxAb = Math.max(maxAb, parseInt(m[1]));
-      }
-      this.abCounter = Math.max(this.abCounter, maxAb);
-      if (!this.artboards.find(a => a.id === this.activeArtboardId)) {
-        this.activeArtboardId = this.artboards[0]?.id ?? null;
-      }
-    } catch { /* keep current artboards */ }
+    // Artboards now derive from the frame shapes in the restored markup
+    // (syncArtboardsCache ran inside rebuildShapesFromDOM above), so there's no
+    // separate artboardsJson to parse back.
     this.onChangeCallback();
   }
 
@@ -1001,6 +1150,22 @@ export class AppState {
         }
       }
 
+      // A frame contains its children like a group, but its own <clipPath> and
+      // .frame-bg rect are managed chrome, not model shapes — skip them.
+      if (type === 'frame') {
+        shape.children = [];
+        for (let j = 0; j < el.children.length; j++) {
+          const childEl = el.children[j] as SVGElement;
+          const ctag = childEl.tagName.toLowerCase();
+          if (ctag === 'clippath' || childEl.classList.contains('frame-bg')) continue;
+          const child = processElement(childEl);
+          if (child) {
+            child.parentId = id;
+            shape.children.push(child);
+          }
+        }
+      }
+
       // A live boolean's children are its operands (marked elements); the
       // <path data-bool-result> sibling is a managed cache, not a shape.
       if (type === 'boolean') {
@@ -1030,6 +1195,9 @@ export class AppState {
     this.ensureEffectFilters();
     // Likewise the shared marker library, if any element references it.
     if (this.drawingLayer.querySelector('[marker-start],[marker-end]')) this.ensureMarkerDefs();
+    // Frames are the source of truth; refresh the derived artboards cache that
+    // rulers/export/snapping/status-bar read from.
+    this.syncArtboardsCache();
   }
 
   private detectType(el: SVGElement): ShapeData['type'] | null {
@@ -1041,7 +1209,11 @@ export class AppState {
     if (tag === 'polygon') return 'polygon';
     if (tag === 'path') return 'path';
     if (tag === 'text') return 'text';
-    if (tag === 'g') return el.hasAttribute('data-boolean') ? 'boolean' : 'group';
+    if (tag === 'g') {
+      if (el.hasAttribute('data-boolean')) return 'boolean';
+      if (el.hasAttribute('data-frame')) return 'frame';
+      return 'group';
+    }
     if (tag === 'image') return 'image';
     if (tag === 'use') return 'use';
     return null;
@@ -2075,11 +2247,10 @@ export class AppState {
     this.selectedShapeIds = [];
     this.clearDefs();
     this.selectedSymbolId = null;
-    this.artboards = [{
-      id: this.nextArtboardId(),
-      x: 0, y: 0, width: 960, height: 540, name: 'Artboard 1',
-    }];
-    this.activeArtboardId = this.artboards[0].id;
+    // A blank document starts with a default frame (like the constructor).
+    this.drawingLayer.appendChild(this.createFrameElement(0, 0, 960, 540, 'Frame 1'));
+    this.rebuildShapesFromDOM();
+    this.activeArtboardId = this.artboards[0]?.id ?? null;
     this.selectedArtboardId = null;
     this.saveHistory();
     this.onChangeCallback();

@@ -41,7 +41,7 @@ export interface ShapeStyle {
 
 export interface ShapeData {
   id: string;
-  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean';
+  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean' | 'frame';
   element: SVGElement;
   name: string;
   style: ShapeStyle;

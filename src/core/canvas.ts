@@ -1,5 +1,10 @@
 import type { Point } from './types';
 
+export interface ViewState {
+  viewBox: { x: number; y: number; w: number; h: number };
+  zoom: number;
+}
+
 export class CanvasController {
   private svgCanvas: SVGSVGElement;
   private viewBox = { x: -80, y: -30, w: 1120, h: 600 };
@@ -116,6 +121,19 @@ export class CanvasController {
     this.viewBox.h = rect.height / this.zoom;
     this.viewBox.x = bx + (bw - this.viewBox.w) / 2;
     this.viewBox.y = by + (bh - this.viewBox.h) / 2;
+    this.updateViewBox();
+    this.updateZoomSelect();
+    this.notifyViewChange();
+  }
+
+  /** Snapshot the viewport (per-document tab remembers its own zoom/pan). */
+  getViewState(): ViewState {
+    return { viewBox: { ...this.viewBox }, zoom: this.zoom };
+  }
+
+  setViewState(v: ViewState): void {
+    this.viewBox = { ...v.viewBox };
+    this.zoom = v.zoom;
     this.updateViewBox();
     this.updateZoomSelect();
     this.notifyViewChange();

@@ -71,4 +71,23 @@ export class History {
 
   /** Mark the current state as the saved baseline (call after save/open/new). */
   markClean(): void { this.savedIndex = this.index; }
+
+  /** Snapshot the whole undo stack (for caching a document tab's history). */
+  exportState(): HistorySnapshot {
+    return { entries: [...this.entries], index: this.index, savedIndex: this.savedIndex };
+  }
+
+  /** Restore a previously exported undo stack. The caller guarantees the live
+   *  document already matches entries[index] (e.g. it was just loaded). */
+  restoreState(s: HistorySnapshot): void {
+    this.entries = [...s.entries];
+    this.index = s.index;
+    this.savedIndex = s.savedIndex;
+  }
+}
+
+export interface HistorySnapshot {
+  entries: HistoryEntry[];
+  index: number;
+  savedIndex: number;
 }

@@ -162,10 +162,18 @@ function drawActiveGroupOutline(state: AppState, selectionLayer: SVGGElement): v
 function drawSingleSelection(shape: ShapeData, selectionLayer: SVGGElement): void {
   const el = shape.element as unknown as SVGGraphicsElement;
   let bbox: DOMRect;
-  try {
-    bbox = el.getBBox();
-  } catch {
-    return;
+  if (shape.type === 'frame') {
+    // A frame's selection box hugs its OWN bounds (local 0,0,w,h), not the union
+    // of its possibly-overflowing children that getBBox would return.
+    const w = parseFloat(shape.element.getAttribute('data-frame-w') ?? '0');
+    const h = parseFloat(shape.element.getAttribute('data-frame-h') ?? '0');
+    bbox = new DOMRect(0, 0, w, h);
+  } else {
+    try {
+      bbox = el.getBBox();
+    } catch {
+      return;
+    }
   }
   if (bbox.width === 0 && bbox.height === 0) return;
 

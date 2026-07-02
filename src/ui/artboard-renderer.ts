@@ -47,14 +47,8 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
     const isActive = ab.id === state.activeArtboardId;
     const isSelected = ab.id === state.selectedArtboardId && isArtboardTool;
 
-    const bg = document.createElementNS(NS, 'rect');
-    bg.setAttribute('x', String(ab.x));
-    bg.setAttribute('y', String(ab.y));
-    bg.setAttribute('width', String(ab.width));
-    bg.setAttribute('height', String(ab.height));
-    bg.setAttribute('fill', state.showTransparency ? 'url(#transparency-check)' : 'white');
-    abLayer.appendChild(bg);
-
+    // Frames now render their own background + clip (the .frame-bg rect inside the
+    // frame <g>); this renderer only draws overlay CHROME (border, label, handles).
     // Grid overlay if enabled
     if (showGrid) {
       const grid = document.createElementNS(NS, 'rect');
@@ -63,6 +57,7 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
       grid.setAttribute('width', String(ab.width));
       grid.setAttribute('height', String(ab.height));
       grid.setAttribute('fill', 'url(#grid-large)');
+      grid.setAttribute('pointer-events', 'none');
       abLayer.appendChild(grid);
     }
 
