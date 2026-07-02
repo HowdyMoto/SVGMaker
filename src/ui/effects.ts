@@ -24,14 +24,16 @@ export function setupEffects(state: AppState): void {
   const dy = $<HTMLInputElement>('fx-shadow-dy');
   const soft = $<HTMLInputElement>('fx-shadow-blur');
 
-  const sel = () => state.getSelectedShape();
+  const hasSel = () => state.selectedShapeIds.length > 0;
+
+  // Effects/blend/markers apply to the WHOLE selection in one undo step; the panel
+  // reflects the primary (last-selected) object's values.
 
   // ---- Blur ----
   const applyBlur = (record: boolean) => {
-    const s = sel();
-    if (!s) return;
+    if (!hasSel()) return;
     blurVal.textContent = String(parseFloat(blur.value));
-    state.setObjectBlur(s.id, parseFloat(blur.value) || 0, record);
+    state.setSelectionBlur(parseFloat(blur.value) || 0, record);
   };
   blur.addEventListener('input', () => applyBlur(false));
   blur.addEventListener('change', () => applyBlur(true));
@@ -45,9 +47,8 @@ export function setupEffects(state: AppState): void {
     opacity: parseFloat(opacity.value),
   });
   const applyShadow = (record: boolean) => {
-    const s = sel();
-    if (!s) return;
-    state.setObjectShadow(s.id, toggle.classList.contains('active') ? readShadow() : null, record);
+    if (!hasSel()) return;
+    state.setSelectionShadow(toggle.classList.contains('active') ? readShadow() : null, record);
   };
 
   toggle.addEventListener('click', () => {
@@ -62,8 +63,7 @@ export function setupEffects(state: AppState): void {
 
   // ---- Blend mode ----
   $<HTMLSelectElement>('fx-blend').addEventListener('change', () => {
-    const s = sel();
-    if (s) state.setBlendMode(s.id, $<HTMLSelectElement>('fx-blend').value);
+    if (hasSel()) state.setSelectionBlendMode($<HTMLSelectElement>('fx-blend').value);
   });
 }
 
@@ -75,8 +75,9 @@ export function updateEffectsPanel(state: AppState): void {
   const blendRow = document.getElementById('prop-blend-row');
   if (!effectsRow || !shadowRow || !paramsRow || !blendRow) return;
 
-  // Effects apply to a single selected object (any type renders through a filter).
-  const single = state.selectedShapeIds.length === 1 ? state.getSelectedShape() : null;
+  // Shown whenever ≥1 object is selected; the fields reflect the primary object,
+  // edits apply to the whole selection.
+  const single = state.selectedShapeIds.length >= 1 ? state.getSelectedShape() : null;
   if (!single) {
     effectsRow.style.display = 'none';
     shadowRow.style.display = 'none';

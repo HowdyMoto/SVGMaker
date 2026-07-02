@@ -1924,12 +1924,29 @@ export class AppState {
 
   // `record` lets a slider apply live on `input` (record=false) and commit one
   // history entry on `change` (record=true), so a drag doesn't flood undo.
-  setObjectBlur(id: string, stdDev: number, record = true): void {
-    const el = this.findShapeById(id)?.element;
-    if (!el) return;
+  private applyBlurTo(el: SVGElement, stdDev: number): void {
     if (stdDev > 0) el.setAttribute('data-fx-blur', String(stdDev));
     else el.removeAttribute('data-fx-blur');
     this.applyEffectFilter(el);
+  }
+
+  private applyShadowTo(el: SVGElement, shadow: ObjectShadow | null): void {
+    if (shadow) el.setAttribute('data-fx-shadow', `${shadow.dx},${shadow.dy},${shadow.blur},${shadow.color},${shadow.opacity}`);
+    else el.removeAttribute('data-fx-shadow');
+    this.applyEffectFilter(el);
+  }
+
+  /** Elements of the current selection (resolved anywhere in the tree). */
+  private selectionElements(): SVGElement[] {
+    return this.selectedShapeIds
+      .map(id => this.findShapeById(id)?.element)
+      .filter((el): el is SVGElement => !!el);
+  }
+
+  setObjectBlur(id: string, stdDev: number, record = true): void {
+    const el = this.findShapeById(id)?.element;
+    if (!el) return;
+    this.applyBlurTo(el, stdDev);
     if (record) this.saveHistory();
     this.onChangeCallback();
   }
@@ -1937,9 +1954,20 @@ export class AppState {
   setObjectShadow(id: string, shadow: ObjectShadow | null, record = true): void {
     const el = this.findShapeById(id)?.element;
     if (!el) return;
-    if (shadow) el.setAttribute('data-fx-shadow', `${shadow.dx},${shadow.dy},${shadow.blur},${shadow.color},${shadow.opacity}`);
-    else el.removeAttribute('data-fx-shadow');
-    this.applyEffectFilter(el);
+    this.applyShadowTo(el, shadow);
+    if (record) this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Apply blur to every selected object in a single undo step. */
+  setSelectionBlur(stdDev: number, record = true): void {
+    for (const el of this.selectionElements()) this.applyBlurTo(el, stdDev);
+    if (record) this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  setSelectionShadow(shadow: ObjectShadow | null, record = true): void {
+    for (const el of this.selectionElements()) this.applyShadowTo(el, shadow);
     if (record) this.saveHistory();
     this.onChangeCallback();
   }
@@ -1978,13 +2006,25 @@ export class AppState {
     return { start: read('marker-start'), end: read('marker-end') };
   }
 
+  private applyMarkerTo(el: SVGElement, pos: 'start' | 'end', markerId: string | null): void {
+    const attr = `marker-${pos}`;
+    if (markerId) el.setAttribute(attr, `url(#${markerId})`);
+    else el.removeAttribute(attr);
+  }
+
   setMarker(id: string, pos: 'start' | 'end', markerId: string | null): void {
     const el = this.findShapeById(id)?.element;
     if (!el) return;
     this.ensureMarkerDefs();
-    const attr = `marker-${pos}`;
-    if (markerId) el.setAttribute(attr, `url(#${markerId})`);
-    else el.removeAttribute(attr);
+    this.applyMarkerTo(el, pos, markerId);
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Apply a marker to every selected object in a single undo step. */
+  setSelectionMarker(pos: 'start' | 'end', markerId: string | null): void {
+    this.ensureMarkerDefs();
+    for (const el of this.selectionElements()) this.applyMarkerTo(el, pos, markerId);
     this.saveHistory();
     this.onChangeCallback();
   }
@@ -1996,12 +2036,23 @@ export class AppState {
     return el?.style.mixBlendMode || 'normal';
   }
 
-  setBlendMode(id: string, mode: string): void {
-    const el = this.findShapeById(id)?.element as SVGElement | undefined;
-    if (!el) return;
+  private applyBlendTo(el: SVGElement, mode: string): void {
     if (mode && mode !== 'normal') el.style.mixBlendMode = mode;
     else el.style.removeProperty('mix-blend-mode');
     if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
+  }
+
+  setBlendMode(id: string, mode: string): void {
+    const el = this.findShapeById(id)?.element as SVGElement | undefined;
+    if (!el) return;
+    this.applyBlendTo(el, mode);
+    this.saveHistory();
+    this.onChangeCallback();
+  }
+
+  /** Apply a blend mode to every selected object in a single undo step. */
+  setSelectionBlendMode(mode: string): void {
+    for (const el of this.selectionElements()) this.applyBlendTo(el, mode);
     this.saveHistory();
     this.onChangeCallback();
   }

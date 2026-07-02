@@ -12,19 +12,19 @@ export function setupMarkers(state: AppState): void {
   const start = document.getElementById('mk-start') as HTMLSelectElement | null;
   const end = document.getElementById('mk-end') as HTMLSelectElement | null;
   start?.addEventListener('change', () => {
-    const s = state.getSelectedShape();
-    if (s) state.setMarker(s.id, 'start', start.value || null);
+    if (state.selectedShapeIds.length) state.setSelectionMarker('start', start.value || null);
   });
   end?.addEventListener('change', () => {
-    const s = state.getSelectedShape();
-    if (s) state.setMarker(s.id, 'end', end.value || null);
+    if (state.selectedShapeIds.length) state.setSelectionMarker('end', end.value || null);
   });
 }
 
 export function updateMarkersPanel(state: AppState): void {
   const row = document.getElementById('prop-markers-row');
   if (!row) return;
-  const single = state.selectedShapeIds.length === 1 ? state.getSelectedShape() : null;
+  // Shown when the primary (last-selected) object is markerable; edits apply to
+  // the whole selection (markers are inert on non-path shapes, so that's safe).
+  const single = state.selectedShapeIds.length >= 1 ? state.getSelectedShape() : null;
   if (!single || !MARKERABLE.has(single.type)) { row.style.display = 'none'; return; }
   row.style.display = '';
   const m = state.getMarkers(single.id);
