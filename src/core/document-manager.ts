@@ -1,7 +1,11 @@
 import type { AppState } from './state';
 import type { CanvasController, ViewState } from './canvas';
 import type { HistorySnapshot } from './history';
-import { serializeDocumentSVG, loadDocumentSVG } from '../ui/project-file';
+import { serializeDocumentSVG, loadDocumentSVG, setProjectName } from '../ui/project-file';
+import { getCloudDoc, setCloudDoc, clearCloudDoc } from '../lib/cloud-doc';
+
+/** The cloud-project identity a tab is tethered to (null = a local/blank doc). */
+interface TabCloudDoc { id: string; name: string; updatedAt: string }
 
 /**
  * Multiple open documents as tabs. There is one live {@link AppState}; the ACTIVE
@@ -20,6 +24,9 @@ export interface DocTab {
   view: ViewState | null;
   selection: string[];
   dirty: boolean;
+  /** Which cloud project this tab maps to. Per-tab so autosave never writes one
+   *  tab's content to another tab's cloud document. */
+  cloudDoc: TabCloudDoc | null;
 }
 
 export class DocumentManager {
@@ -45,7 +52,7 @@ export class DocumentManager {
   private nextId(): string { return `doc-${++this.counter}`; }
 
   private blankTab(id: string, title: string): DocTab {
-    return { id, title, svg: null, history: null, view: null, selection: [], dirty: false };
+    return { id, title, svg: null, history: null, view: null, selection: [], dirty: false, cloudDoc: null };
   }
 
   private saveActiveIntoTab(): void {
@@ -56,18 +63,27 @@ export class DocumentManager {
     t.selection = [...this.state.selectedShapeIds];
     t.dirty = this.state.dirty;
     t.title = this.currentTitle();
+    // Capture which cloud project this tab is tethered to, so it travels with the
+    // tab and autosave targets the correct document after a switch.
+    const cd = getCloudDoc();
+    t.cloudDoc = cd.id ? { id: cd.id, name: cd.name ?? '', updatedAt: cd.updatedAt ?? '' } : null;
   }
 
   private loadTabIntoState(t: DocTab): void {
     if (t.svg == null) {
       this.state.clearAll(); // fresh blank document (default frame)
-      return;
+    } else {
+      loadDocumentSVG(this.state, t.svg); // rebuilds content + defs, resets history & cloud tether
+      if (t.history) this.state.importHistory(t.history);
+      if (t.view) this.canvas.setViewState(t.view);
+      const sel = t.selection.filter(id => this.state.findShapeById(id));
+      if (sel.length) this.state.selectMultiple(sel);
     }
-    loadDocumentSVG(this.state, t.svg);   // rebuilds content + defs, resets history
-    if (t.history) this.state.importHistory(t.history);
-    if (t.view) this.canvas.setViewState(t.view);
-    const sel = t.selection.filter(id => this.state.findShapeById(id));
-    if (sel.length) this.state.selectMultiple(sel);
+    // Re-tether the cloud identity to THIS tab's document (after load, which may
+    // have cleared it). Without this, autosave would write here to the previous
+    // tab's cloud row — silent cross-document data loss.
+    if (t.cloudDoc) setCloudDoc(t.cloudDoc.id, t.cloudDoc.name, t.cloudDoc.updatedAt);
+    else clearCloudDoc();
   }
 
   private currentTitle(): string {
@@ -119,8 +135,7 @@ export class DocumentManager {
   }
 
   private syncProjectName(): void {
-    const el = document.getElementById('project-name');
-    if (el) el.textContent = this.active.title;
+    setProjectName(this.active.title === 'Untitled' ? null : this.active.title);
   }
 
   /** Any tab (active or cached) with unsaved edits — for beforeunload. */
