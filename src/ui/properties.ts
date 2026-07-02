@@ -80,18 +80,6 @@ export function setupProperties(state: AppState): void {
   const propH = document.getElementById('prop-h') as HTMLInputElement;
   const propRotation = document.getElementById('prop-rotation') as HTMLInputElement;
 
-  // Control bar
-  const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
-  const ctrlFillNone = document.getElementById('ctrl-fill-none') as HTMLButtonElement;
-  const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
-  const ctrlStrokeNone = document.getElementById('ctrl-stroke-none') as HTMLButtonElement;
-  const ctrlStrokeWeight = document.getElementById('ctrl-stroke-weight') as HTMLInputElement;
-  const ctrlX = document.getElementById('ctrl-x') as HTMLInputElement;
-  const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
-  const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
-  const ctrlH = document.getElementById('ctrl-h') as HTMLInputElement;
-  const ctrlRotation = document.getElementById('ctrl-rotation') as HTMLInputElement;
-
   // Stroke panel
   const strokeWeight = document.getElementById('stroke-weight') as HTMLInputElement;
   const strokeDash = document.getElementById('stroke-dash') as HTMLInputElement;
@@ -265,61 +253,10 @@ export function setupProperties(state: AppState): void {
     handleChange();
   });
 
-  // Control bar mirrors
-  ctrlFillNone.addEventListener('click', () => {
-    ctrlFillNone.classList.toggle('active');
-    fillNoneBtn.classList.toggle('active', ctrlFillNone.classList.contains('active'));
-    handleChange();
-  });
-  ctrlStrokeNone.addEventListener('click', () => {
-    ctrlStrokeNone.classList.toggle('active');
-    strokeNoneBtn.classList.toggle('active', ctrlStrokeNone.classList.contains('active'));
-    handleChange();
-  });
-
-  const syncFromCtrl = () => {
-    // Control bar color inputs still apply colors directly
-    const shape = state.getSelectedShape();
-    if (shape) {
-      shape.element.setAttribute('fill', ctrlFill.value);
-      shape.style.fill = ctrlFill.value;
-      shape.element.setAttribute('stroke', ctrlStroke.value);
-      shape.style.stroke = ctrlStroke.value;
-    } else {
-      state.defaultStyle.fill = ctrlFill.value;
-      state.defaultStyle.stroke = ctrlStroke.value;
-    }
-    strokeWidthInput.value = ctrlStrokeWeight.value;
-    strokeWeight.value = ctrlStrokeWeight.value;
-    handleChange();
-  };
-
-  const syncPosFromCtrl = () => {
-    propX.value = ctrlX.value;
-    propY.value = ctrlY.value;
-    propW.value = ctrlW.value;
-    propH.value = ctrlH.value;
-    applyPosition();
-  };
-
-  ctrlFill.addEventListener('input', syncFromCtrl);
-  ctrlStroke.addEventListener('input', syncFromCtrl);
-  ctrlStrokeWeight.addEventListener('input', syncFromCtrl);
-  ctrlStrokeWeight.addEventListener('change', syncFromCtrl);
-  ctrlX.addEventListener('change', syncPosFromCtrl);
-  ctrlY.addEventListener('change', syncPosFromCtrl);
-  ctrlW.addEventListener('change', syncPosFromCtrl);
-  ctrlH.addEventListener('change', syncPosFromCtrl);
-  ctrlRotation.addEventListener('change', () => {
-    propRotation.value = ctrlRotation.value;
-    applyPosition();
-  });
-
   // Stroke weight sync. `input` fires live (so drag-scrub previews); `change`
   // is the final commit. Both run handleChange — matching the opacity sliders.
   const syncStrokeWeight = () => {
     strokeWidthInput.value = strokeWeight.value;
-    ctrlStrokeWeight.value = strokeWeight.value;
     handleChange();
   };
   strokeWeight.addEventListener('input', syncStrokeWeight);
@@ -429,18 +366,6 @@ export function updatePropertiesPanel(state: AppState): void {
   const strokeNonScalingInput = document.getElementById('stroke-nonscaling') as HTMLInputElement;
   const strokeAlignGroup = document.getElementById('stroke-align') as HTMLElement;
 
-  // Control bar
-  const ctrlFill = document.getElementById('ctrl-fill') as HTMLInputElement;
-  const ctrlFillNone = document.getElementById('ctrl-fill-none') as HTMLButtonElement;
-  const ctrlStroke = document.getElementById('ctrl-stroke') as HTMLInputElement;
-  const ctrlStrokeNone = document.getElementById('ctrl-stroke-none') as HTMLButtonElement;
-  const ctrlStrokeWeight = document.getElementById('ctrl-stroke-weight') as HTMLInputElement;
-  const ctrlX = document.getElementById('ctrl-x') as HTMLInputElement;
-  const ctrlY = document.getElementById('ctrl-y') as HTMLInputElement;
-  const ctrlW = document.getElementById('ctrl-w') as HTMLInputElement;
-  const ctrlH = document.getElementById('ctrl-h') as HTMLInputElement;
-  const ctrlRotation = document.getElementById('ctrl-rotation') as HTMLInputElement;
-
   // Toolbar swatches
   const fillSwatch = document.querySelector('#tb-fill-swatch .swatch-inner') as HTMLElement;
   const strokeSwatch = document.querySelector('#tb-stroke-swatch .swatch-inner') as HTMLElement;
@@ -466,14 +391,6 @@ export function updatePropertiesPanel(state: AppState): void {
     typePanel.style.display = 'none';
     propX.value = '0'; propY.value = '0'; propW.value = '0'; propH.value = '0';
     propRotation.value = '0';
-
-    ctrlFill.value = (ds.fill === 'none' || ds.fill.startsWith('url(')) ? '#000000' : ds.fill;
-    ctrlFillNone.classList.toggle('active', state.fillNone);
-    ctrlStroke.value = (ds.stroke === 'none' || ds.stroke.startsWith('url(')) ? '#000000' : ds.stroke;
-    ctrlStrokeNone.classList.toggle('active', state.strokeNone);
-    ctrlStrokeWeight.value = String(ds.strokeWidth);
-    ctrlX.value = '0'; ctrlY.value = '0'; ctrlW.value = '0'; ctrlH.value = '0';
-    ctrlRotation.value = '0';
     strokeWeight.value = String(ds.strokeWidth);
     strokeDash.value = ds.strokeDasharray ?? '';
     strokeDashoffsetInput.value = String(ds.strokeDashoffset ?? 0);
@@ -512,12 +429,6 @@ export function updatePropertiesPanel(state: AppState): void {
   strokeNonScalingInput.checked = !!s.strokeNonScaling;
   setActiveAlign(strokeAlignGroup, s.strokeAlign ?? 'center');
 
-  ctrlFill.value = (isFillNone || s.fill.startsWith('url(')) ? '#000000' : s.fill;
-  ctrlFillNone.classList.toggle('active', isFillNone);
-  ctrlStroke.value = (isStrokeNone || s.stroke.startsWith('url(')) ? '#000000' : s.stroke;
-  ctrlStrokeNone.classList.toggle('active', isStrokeNone);
-  ctrlStrokeWeight.value = String(s.strokeWidth);
-
   fillSwatch.style.background = isFillNone ? 'transparent' : paintPreviewBg(s.fill, state);
   strokeSwatch.style.borderColor = isStrokeNone ? 'transparent' : (s.stroke.startsWith('url(') ? '#888' : s.stroke);
 
@@ -540,12 +451,9 @@ export function updatePropertiesPanel(state: AppState): void {
     };
     propX.value = vals.x; propY.value = vals.y;
     propW.value = vals.w; propH.value = vals.h;
-    ctrlX.value = vals.x; ctrlY.value = vals.y;
-    ctrlW.value = vals.w; ctrlH.value = vals.h;
 
     const rotVal = String(Math.round(shape.rotation ?? 0));
     propRotation.value = rotVal;
-    ctrlRotation.value = rotVal;
   } catch { /* ignore */ }
 
   const capBtns = document.querySelectorAll('#stroke-caps button');
