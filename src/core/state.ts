@@ -7,6 +7,7 @@ import { History, type HistorySnapshot } from './history';
 import { PaintRegistry } from './paint-registry';
 import { ClipboardManager, type ClipboardHost } from './clipboard';
 import { SymbolRegistry, type SymbolHost } from './symbol-registry';
+import { EffectsManager, type EffectsHost } from './effects';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
@@ -157,6 +158,7 @@ export class AppState {
   /** Cut/copy/paste. Extracted to core/clipboard.ts; reaches the shape model
    *  through the host adapter built in the constructor. */
   private clipboardMgr: ClipboardManager;
+  private effects: EffectsManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -220,6 +222,15 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.symbolRegistry = new SymbolRegistry(symbolHost);
+    const effectsHost: EffectsHost = {
+      ensureDefs: () => this.ensureDefs(),
+      getDrawingLayer: () => this.drawingLayer,
+      findShapeElement: (id) => this.findShapeById(id)?.element ?? null,
+      selectionElements: () => this.selectionElements(),
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.effects = new EffectsManager(effectsHost);
     // Create the default frame ("Frame 1"). Frames are real <g data-frame>
     // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
     // artboards cache from them.
@@ -1313,7 +1324,7 @@ export class AppState {
     this.clearStaleIsolation();
     // Effect <filter> defs aren't in the history snapshot — rebuild them from the
     // round-tripped data-fx-* attrs so blur/shadow survive undo, redo, and load.
-    this.ensureEffectFilters();
+    this.effects.ensureFilters();
     // Likewise the shared marker library, if any element references it.
     if (this.drawingLayer.querySelector('[marker-start],[marker-end]')) this.ensureMarkerDefs();
     // Frames are the source of truth; refresh the derived artboards cache that
@@ -2157,7 +2168,7 @@ export class AppState {
     g.appendChild(el);
     this.regenerateAppearance(g);
     // The filter def was keyed to the element's id; rebuild it against the wrapper.
-    if (g.hasAttribute('data-fx-blur') || g.hasAttribute('data-fx-shadow')) this.applyEffectFilter(g);
+    if (g.hasAttribute('data-fx-blur') || g.hasAttribute('data-fx-shadow')) this.effects.applyFilter(g);
     return g;
   }
 
@@ -2175,7 +2186,7 @@ export class AppState {
     if (wrapperEl.style.mixBlendMode) src.style.mixBlendMode = wrapperEl.style.mixBlendMode;
     this.applyTrivialToNative(src, layers);
     wrapperEl.replaceWith(src);
-    if (src.hasAttribute('data-fx-blur') || src.hasAttribute('data-fx-shadow')) this.applyEffectFilter(src);
+    if (src.hasAttribute('data-fx-blur') || src.hasAttribute('data-fx-shadow')) this.effects.applyFilter(src);
     return src;
   }
 
@@ -2323,7 +2334,7 @@ export class AppState {
 
     el.replaceWith(g);
     g.appendChild(srcPath);
-    if (g.hasAttribute('data-fx-blur') || g.hasAttribute('data-fx-shadow')) this.applyEffectFilter(g);
+    if (g.hasAttribute('data-fx-blur') || g.hasAttribute('data-fx-shadow')) this.effects.applyFilter(g);
     return g;
   }
 
@@ -2345,7 +2356,7 @@ export class AppState {
     for (const a of this.AP_CARRY_ATTRS) { const v = g.getAttribute(a); if (v != null) path.setAttribute(a, v); }
     if (g.style.mixBlendMode) path.style.mixBlendMode = g.style.mixBlendMode;
     g.replaceWith(path);
-    if (path.hasAttribute('data-fx-blur') || path.hasAttribute('data-fx-shadow')) this.applyEffectFilter(path);
+    if (path.hasAttribute('data-fx-blur') || path.hasAttribute('data-fx-shadow')) this.effects.applyFilter(path);
     this.rebuildShapesFromDOM();
     this.selectedShapeIds = [id];
     this.saveHistory();
@@ -2422,32 +2433,11 @@ export class AppState {
   // Effect parameters are the source of truth and live as data-fx-* attributes on
   // the element, so they round-trip through the history/innerHTML snapshot. The
   // SVG <filter> in <defs> is a regenerated CACHE (defs aren't snapshotted), so
-  // ensureEffectFilters() rebuilds it after every rebuildShapesFromDOM/import.
+  // EffectsManager.ensureFilters() rebuilds it after every rebuildShapesFromDOM/import.
 
+  // Effects (blur / drop shadow) are owned by EffectsManager; these delegate.
   getObjectEffects(id: string): { blur: number; shadow: ObjectShadow | null } {
-    const el = this.findShapeById(id)?.element;
-    const blur = el ? (parseFloat(el.getAttribute('data-fx-blur') || '0') || 0) : 0;
-    let shadow: ObjectShadow | null = null;
-    const sa = el?.getAttribute('data-fx-shadow');
-    if (sa) {
-      const [dx, dy, b, color, op] = sa.split(',');
-      shadow = { dx: parseFloat(dx) || 0, dy: parseFloat(dy) || 0, blur: parseFloat(b) || 0, color: color || '#000000', opacity: parseFloat(op) || 0 };
-    }
-    return { blur, shadow };
-  }
-
-  // `record` lets a slider apply live on `input` (record=false) and commit one
-  // history entry on `change` (record=true), so a drag doesn't flood undo.
-  private applyBlurTo(el: SVGElement, stdDev: number): void {
-    if (stdDev > 0) el.setAttribute('data-fx-blur', String(stdDev));
-    else el.removeAttribute('data-fx-blur');
-    this.applyEffectFilter(el);
-  }
-
-  private applyShadowTo(el: SVGElement, shadow: ObjectShadow | null): void {
-    if (shadow) el.setAttribute('data-fx-shadow', `${shadow.dx},${shadow.dy},${shadow.blur},${shadow.color},${shadow.opacity}`);
-    else el.removeAttribute('data-fx-shadow');
-    this.applyEffectFilter(el);
+    return this.effects.getObjectEffects(id);
   }
 
   /** Elements of the current selection (resolved anywhere in the tree). */
@@ -2476,34 +2466,10 @@ export class AppState {
     this.onChangeCallback();
   }
 
-  setObjectBlur(id: string, stdDev: number, record = true): void {
-    const el = this.findShapeById(id)?.element;
-    if (!el) return;
-    this.applyBlurTo(el, stdDev);
-    if (record) this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  setObjectShadow(id: string, shadow: ObjectShadow | null, record = true): void {
-    const el = this.findShapeById(id)?.element;
-    if (!el) return;
-    this.applyShadowTo(el, shadow);
-    if (record) this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Apply blur to every selected object in a single undo step. */
-  setSelectionBlur(stdDev: number, record = true): void {
-    for (const el of this.selectionElements()) this.applyBlurTo(el, stdDev);
-    if (record) this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  setSelectionShadow(shadow: ObjectShadow | null, record = true): void {
-    for (const el of this.selectionElements()) this.applyShadowTo(el, shadow);
-    if (record) this.saveHistory();
-    this.onChangeCallback();
-  }
+  setObjectBlur(id: string, stdDev: number, record = true): void { this.effects.setObjectBlur(id, stdDev, record); }
+  setObjectShadow(id: string, shadow: ObjectShadow | null, record = true): void { this.effects.setObjectShadow(id, shadow, record); }
+  setSelectionBlur(stdDev: number, record = true): void { this.effects.setSelectionBlur(stdDev, record); }
+  setSelectionShadow(shadow: ObjectShadow | null, record = true): void { this.effects.setSelectionShadow(shadow, record); }
 
   // ---- Markers (arrowheads / dots on line & path ends) ----
   //
@@ -2588,52 +2554,6 @@ export class AppState {
     for (const el of this.selectionElements()) this.applyBlendTo(el, mode);
     this.saveHistory();
     this.onChangeCallback();
-  }
-
-  /** (Re)build or remove an element's `<filter>` from its data-fx-* attributes. */
-  private applyEffectFilter(el: SVGElement): void {
-    const blur = parseFloat(el.getAttribute('data-fx-blur') || '0') || 0;
-    const shadowAttr = el.getAttribute('data-fx-shadow');
-    const fid = `fx-${el.id}`;
-    const defs = this.ensureDefs();
-    defs.querySelector(`[id="${fid}"]`)?.remove();
-
-    if (blur <= 0 && !shadowAttr) {
-      if (el.getAttribute('filter') === `url(#${fid})`) el.removeAttribute('filter');
-      return;
-    }
-    const SVG = 'http://www.w3.org/2000/svg';
-    const filter = document.createElementNS(SVG, 'filter');
-    filter.setAttribute('id', fid);
-    // Roomy region so blur / shadow spread isn't clipped.
-    filter.setAttribute('x', '-50%'); filter.setAttribute('y', '-50%');
-    filter.setAttribute('width', '200%'); filter.setAttribute('height', '200%');
-    filter.setAttribute('color-interpolation-filters', 'sRGB');
-    let input = 'SourceGraphic';
-    if (blur > 0) {
-      const fe = document.createElementNS(SVG, 'feGaussianBlur');
-      fe.setAttribute('in', input); fe.setAttribute('stdDeviation', String(blur));
-      fe.setAttribute('result', 'fxblur'); filter.appendChild(fe); input = 'fxblur';
-    }
-    if (shadowAttr) {
-      const [dx, dy, b, color, op] = shadowAttr.split(',');
-      const fe = document.createElementNS(SVG, 'feDropShadow');
-      fe.setAttribute('in', input);
-      fe.setAttribute('dx', dx || '0'); fe.setAttribute('dy', dy || '0');
-      fe.setAttribute('stdDeviation', b || '0');
-      fe.setAttribute('flood-color', color || '#000000');
-      fe.setAttribute('flood-opacity', op || '1');
-      filter.appendChild(fe);
-    }
-    defs.appendChild(filter);
-    el.setAttribute('filter', `url(#${fid})`);
-  }
-
-  /** Regenerate every effect filter from its element's data-fx-* attrs (defs are
-   *  not part of the history snapshot, so they must be rebuilt after restore). */
-  private ensureEffectFilters(): void {
-    this.drawingLayer.querySelectorAll('[data-fx-blur],[data-fx-shadow]')
-      .forEach((el) => this.applyEffectFilter(el as SVGElement));
   }
 
   private ensureDefs(): SVGDefsElement {
