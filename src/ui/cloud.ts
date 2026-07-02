@@ -16,9 +16,12 @@ import {
 import { openModal } from './modal';
 import { getCloudDoc, setCloudDoc, setCloudDocUpdatedAt, setCloudDocName, clearCloudDoc } from '../lib/cloud-doc';
 import {
-  listCloudProjects, loadCloudProject, createCloudProject,
+  loadCloudProject, createCloudProject,
   updateCloudProject, renameCloudProject, deleteCloudProject,
-  ProjectConflictError, type CloudProjectMeta,
+  listMyProjects, listSharedWithMe, listPublicProjects, listCategories,
+  setProjectVisibility, setProjectCategory,
+  listShares, shareProject, unshareProject,
+  ProjectConflictError, type CloudProjectMeta, type ShareRole,
 } from '../lib/projects';
 
 let appState: AppState | null = null;
@@ -161,88 +164,238 @@ async function doAutosave(): Promise<void> {
   }
 }
 
-/** The "Open from Cloud" file-browser modal: list, open, rename, delete. */
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+type CloudTab = 'mine' | 'shared' | 'public';
+
+/** The Cloud Projects browser: My Boards / Shared with me / Public, with category
+ *  filters, per-board visibility toggle, sharing, rename, and delete. */
 export async function openFromCloud(state: AppState): Promise<void> {
   if (!requireSignIn()) return;
-  const modal = openModal({ id: 'cloud-overlay', ariaLabel: 'Open from Cloud', dialogClass: 'cloud-dialog' });
+  const modal = openModal({ id: 'cloud-overlay', ariaLabel: 'Cloud Projects', dialogClass: 'cloud-dialog' });
   if (!modal) return; // singleton already open
 
   modal.dialog.insertAdjacentHTML('beforeend', `
-    <h1 class="cloud-title">Your Cloud Files</h1>
+    <h1 class="cloud-title">Cloud Projects</h1>
+    <div class="cloud-tabs" role="tablist">
+      <button class="cloud-tab active" data-tab="mine">My Boards</button>
+      <button class="cloud-tab" data-tab="shared">Shared with me</button>
+      <button class="cloud-tab" data-tab="public">Public</button>
+    </div>
+    <div class="cloud-cats"></div>
     <div class="cloud-list" aria-live="polite">Loading…</div>
   `);
   const listEl = modal.dialog.querySelector('.cloud-list') as HTMLElement;
+  const catsEl = modal.dialog.querySelector('.cloud-cats') as HTMLElement;
+  let tab: CloudTab = 'mine';
+  let category: string | null = null;
 
   const openOne = async (p: CloudProjectMeta): Promise<void> => {
     if (!confirmDiscard(state)) return;
     try {
       const full = await loadCloudProject(p.id);
-      loadDocumentSVG(state, full.content); // handles render + markClean
-      setCloudDoc(full.id, full.name, full.updated_at);
-      conflictBlocked = false; // fresh baseline
-      setProjectName(full.name);
+      loadDocumentSVG(state, full.content); // render + markClean
+      const canEdit = p.owned || p.role === 'editor';
+      if (canEdit) {
+        setCloudDoc(full.id, full.name, full.updated_at);
+        conflictBlocked = false;
+        setProjectName(full.name);
+      } else {
+        // View-only board → open as a detached local copy the viewer can Save As.
+        clearCloudDoc();
+        setProjectName(`${full.name} (copy)`);
+      }
       modal.close();
-    } catch (err) {
-      alert('Open failed: ' + (err instanceof Error ? err.message : String(err)));
-    }
+    } catch (err) { alert('Open failed: ' + errMsg(err)); }
+  };
+
+  const list = (): Promise<CloudProjectMeta[]> =>
+    tab === 'mine' ? listMyProjects()
+    : tab === 'shared' ? listSharedWithMe()
+    : listPublicProjects();
+
+  const renderCats = async (): Promise<void> => {
+    catsEl.innerHTML = '';
+    if (tab !== 'mine') return;
+    let cats: string[] = [];
+    try { cats = await listCategories(); } catch { /* ignore */ }
+    const chip = (label: string, value: string | null) => {
+      const b = document.createElement('button');
+      b.className = 'cloud-chip' + (category === value ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { category = value; void refresh(); });
+      return b;
+    };
+    catsEl.appendChild(chip('All', null));
+    for (const c of cats) catsEl.appendChild(chip(c, c));
   };
 
   const render = async (): Promise<void> => {
     try {
-      const projects = await listCloudProjects();
+      let projects = await list();
+      if (tab === 'mine' && category) projects = projects.filter(p => (p.category ?? null) === category);
       if (projects.length === 0) {
-        listEl.innerHTML = '<div class="cloud-empty">No cloud files yet. Use “Save to Cloud” to add one.</div>';
+        listEl.innerHTML = `<div class="cloud-empty">${tab === 'mine'
+          ? 'No boards yet. Use “Save to Cloud” to add one.'
+          : tab === 'shared' ? 'Nothing shared with you yet.' : 'No public boards yet.'}</div>`;
         return;
       }
       listEl.innerHTML = '';
       for (const p of projects) listEl.appendChild(rowFor(p));
     } catch (err) {
-      listEl.innerHTML = `<div class="cloud-empty">Failed to load: ${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
+      listEl.innerHTML = `<div class="cloud-empty">Failed to load: ${escapeHtml(errMsg(err))}</div>`;
     }
   };
+
+  const refresh = async (): Promise<void> => { await renderCats(); await render(); };
+
+  modal.dialog.querySelectorAll('.cloud-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tab = (btn as HTMLElement).dataset.tab as CloudTab;
+      category = null;
+      modal.dialog.querySelectorAll('.cloud-tab').forEach(b => b.classList.toggle('active', b === btn));
+      void refresh();
+    });
+  });
 
   const rowFor = (p: CloudProjectMeta): HTMLElement => {
     const row = document.createElement('div');
     row.className = 'cloud-row';
+    const badges: string[] = [];
+    if (p.category) badges.push(`<span class="cloud-badge">${escapeHtml(p.category)}</span>`);
+    if (p.role) badges.push(`<span class="cloud-badge">${p.role === 'editor' ? 'Can edit' : 'View only'}</span>`);
+    if (tab === 'public' && p.owned) badges.push('<span class="cloud-badge">Yours</span>');
     row.innerHTML = `
-      <button class="cloud-open" title="Open this file">
+      <button class="cloud-open" title="Open this board">
         <span class="cloud-name"></span>
         <span class="cloud-when"></span>
       </button>
-      <button class="cloud-act cloud-rename" title="Rename">Rename</button>
-      <button class="cloud-act cloud-delete" title="Delete">Delete</button>
-    `;
+      <span class="cloud-badges">${badges.join('')}</span>
+      <span class="cloud-actions"></span>`;
     (row.querySelector('.cloud-name') as HTMLElement).textContent = p.name;
-    (row.querySelector('.cloud-when') as HTMLElement).textContent = new Date(p.updated_at).toLocaleString();
-
+    (row.querySelector('.cloud-when') as HTMLElement).textContent = new Date(p.updated_at).toLocaleDateString();
     row.querySelector('.cloud-open')!.addEventListener('click', () => { void openOne(p); });
 
-    row.querySelector('.cloud-rename')!.addEventListener('click', async () => {
-      const name = window.prompt('Rename to:', p.name);
-      if (name === null) return;
-      const next = name.trim() || p.name;
-      try {
-        const newTs = await renameCloudProject(p.id, next);
-        if (getCloudDoc().id === p.id) { setCloudDocName(next); setCloudDocUpdatedAt(newTs); setProjectName(next); }
-        await render();
-      } catch (err) {
-        alert('Rename failed: ' + (err instanceof Error ? err.message : String(err)));
-      }
-    });
+    const actions = row.querySelector('.cloud-actions') as HTMLElement;
+    if (p.owned) {
+      // Visibility toggle
+      const vis = document.createElement('button');
+      const isPublic = p.visibility === 'public';
+      vis.className = 'cloud-act' + (isPublic ? ' cloud-act-on' : '');
+      vis.textContent = isPublic ? 'Public' : 'Private';
+      vis.title = 'Toggle public/private';
+      vis.addEventListener('click', async () => {
+        try { await setProjectVisibility(p.id, isPublic ? 'private' : 'public'); await render(); }
+        catch (err) { alert('Failed: ' + errMsg(err)); }
+      });
+      actions.appendChild(vis);
 
-    row.querySelector('.cloud-delete')!.addEventListener('click', async () => {
-      if (!window.confirm(`Delete “${p.name}”? This can't be undone.`)) return;
-      try {
-        await deleteCloudProject(p.id);
-        if (getCloudDoc().id === p.id) clearCloudDoc(); // open doc is now untethered
-        await render();
-      } catch (err) {
-        alert('Delete failed: ' + (err instanceof Error ? err.message : String(err)));
-      }
-    });
-
+      actions.appendChild(actBtn('Share', () => openShareDialog(p.id, p.name)));
+      actions.appendChild(actBtn('Category', async () => {
+        const c = window.prompt('Category (blank to clear):', p.category ?? '');
+        if (c === null) return;
+        try { await setProjectCategory(p.id, c.trim() || null); await refresh(); }
+        catch (err) { alert('Failed: ' + errMsg(err)); }
+      }));
+      actions.appendChild(actBtn('Rename', async () => {
+        const name = window.prompt('Rename to:', p.name);
+        if (name === null) return;
+        const next = name.trim() || p.name;
+        try {
+          const ts = await renameCloudProject(p.id, next);
+          if (getCloudDoc().id === p.id) { setCloudDocName(next); setCloudDocUpdatedAt(ts); setProjectName(next); }
+          await render();
+        } catch (err) { alert('Rename failed: ' + errMsg(err)); }
+      }));
+      actions.appendChild(actBtn('Delete', async () => {
+        if (!window.confirm(`Delete “${p.name}”? This can't be undone.`)) return;
+        try {
+          await deleteCloudProject(p.id);
+          if (getCloudDoc().id === p.id) clearCloudDoc();
+          await render();
+        } catch (err) { alert('Delete failed: ' + errMsg(err)); }
+      }, 'cloud-act-danger'));
+    }
     return row;
   };
 
-  void render();
+  void refresh();
+}
+
+function actBtn(label: string, onClick: () => void, cls = ''): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = `cloud-act ${cls}`.trim();
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** Share dialog: list collaborators, invite by email with a role, change/remove. */
+export function openShareDialog(projectId: string, name: string): void {
+  const modal = openModal({ id: 'share-overlay', ariaLabel: 'Share project', dialogClass: 'share-dialog' });
+  if (!modal) return;
+  modal.dialog.insertAdjacentHTML('beforeend', `
+    <h1 class="cloud-title">Share “${escapeHtml(name)}”</h1>
+    <p class="share-hint">Invite specific BuzzQuill users. Boards are private until you add people or make them public.</p>
+    <div class="share-add">
+      <input type="email" class="share-email" placeholder="teammate@email.com" autocomplete="off" />
+      <select class="share-role">
+        <option value="viewer">Can view</option>
+        <option value="editor">Can edit</option>
+      </select>
+      <button class="share-invite">Invite</button>
+    </div>
+    <div class="share-msg" aria-live="polite"></div>
+    <div class="share-list" aria-live="polite">Loading…</div>
+  `);
+  const listEl = modal.dialog.querySelector('.share-list') as HTMLElement;
+  const emailEl = modal.dialog.querySelector('.share-email') as HTMLInputElement;
+  const roleEl = modal.dialog.querySelector('.share-role') as HTMLSelectElement;
+  const msgEl = modal.dialog.querySelector('.share-msg') as HTMLElement;
+
+  const renderShares = async (): Promise<void> => {
+    try {
+      const shares = await listShares(projectId);
+      if (!shares.length) { listEl.innerHTML = '<div class="cloud-empty">No collaborators yet.</div>'; return; }
+      listEl.innerHTML = '';
+      for (const sh of shares) {
+        const row = document.createElement('div');
+        row.className = 'share-row';
+        row.innerHTML = `
+          <span class="share-who"></span>
+          <select class="share-row-role">
+            <option value="viewer">Can view</option>
+            <option value="editor">Can edit</option>
+          </select>
+          <button class="cloud-act cloud-act-danger share-remove">Remove</button>`;
+        (row.querySelector('.share-who') as HTMLElement).textContent = sh.grantee_email ?? sh.grantee_id;
+        (row.querySelector('.share-row-role') as HTMLSelectElement).value = sh.role;
+        row.querySelector('.share-row-role')!.addEventListener('change', async (e) => {
+          const role = (e.target as HTMLSelectElement).value as ShareRole;
+          try { await shareProject(projectId, sh.grantee_email ?? '', role); } catch (err) { msgEl.textContent = errMsg(err); }
+        });
+        row.querySelector('.share-remove')!.addEventListener('click', async () => {
+          try { await unshareProject(projectId, sh.grantee_id); await renderShares(); }
+          catch (err) { msgEl.textContent = errMsg(err); }
+        });
+        listEl.appendChild(row);
+      }
+    } catch (err) {
+      listEl.innerHTML = `<div class="cloud-empty">Failed to load: ${escapeHtml(errMsg(err))}</div>`;
+    }
+  };
+
+  modal.dialog.querySelector('.share-invite')!.addEventListener('click', async () => {
+    const email = emailEl.value.trim();
+    if (!email) return;
+    msgEl.textContent = 'Inviting…';
+    try {
+      await shareProject(projectId, email, roleEl.value as ShareRole);
+      emailEl.value = '';
+      msgEl.textContent = '';
+      await renderShares();
+    } catch (err) { msgEl.textContent = errMsg(err); }
+  });
+
+  void renderShares();
 }

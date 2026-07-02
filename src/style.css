@@ -2746,3 +2746,45 @@ g[data-boolean][data-bool-editing] > [data-bool-result] { opacity: 0.45; }
   outline: 2px solid var(--ai-accent, #2d7ff9);
   outline-offset: 1px;
 }
+
+/* ===== Cloud Projects browser (tabs / categories / sharing) ===== */
+.cloud-tabs { display: flex; gap: 4px; margin: 4px 0 10px; border-bottom: 1px solid var(--ai-border, #3a3a3a); }
+.cloud-tab {
+  padding: 6px 12px; font-size: 12px; background: transparent; border: none;
+  border-bottom: 2px solid transparent; color: var(--ai-text-dim, #999); cursor: pointer;
+}
+.cloud-tab:hover { color: var(--ai-text, #ddd); }
+.cloud-tab.active { color: var(--ai-text, #fff); border-bottom-color: var(--ai-accent, #2d7ff9); }
+.cloud-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cloud-cats:empty { display: none; }
+.cloud-chip {
+  padding: 3px 10px; font-size: 11px; border-radius: 999px; cursor: pointer;
+  background: var(--ai-panel, #2a2a2a); color: var(--ai-text-dim, #aaa); border: 1px solid var(--ai-border, #444);
+}
+.cloud-chip.active { background: var(--ai-accent, #2d7ff9); color: #fff; border-color: var(--ai-accent, #2d7ff9); }
+.cloud-row { display: flex; align-items: center; gap: 8px; }
+.cloud-badges { display: flex; gap: 4px; margin-left: auto; }
+.cloud-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 999px;
+  background: var(--ai-panel, #333); color: var(--ai-text-dim, #bbb); white-space: nowrap;
+}
+.cloud-actions { display: flex; gap: 4px; }
+.cloud-act {
+  font-size: 11px; padding: 4px 9px; border-radius: 4px; cursor: pointer;
+  background: transparent; color: var(--ai-text, #ddd); border: 1px solid var(--ai-border, #4a4a4a);
+}
+.cloud-act:hover { background: var(--ai-btn-hover, rgba(255,255,255,0.06)); }
+.cloud-act-on { background: var(--ai-accent, #2d7ff9); border-color: var(--ai-accent, #2d7ff9); color: #fff; }
+.cloud-act-danger:hover { background: var(--ai-danger, #f44336); border-color: var(--ai-danger, #f44336); color: #fff; }
+
+/* ===== Share dialog ===== */
+.share-dialog { width: 420px; }
+.share-hint { font-size: 11px; color: var(--ai-text-dim, #999); margin: 4px 0 12px; }
+.share-add { display: flex; gap: 6px; margin-bottom: 6px; }
+.share-email { flex: 1; height: 30px; padding: 0 8px; border-radius: 4px; border: 1px solid var(--ai-border, #4a4a4a); background: var(--ai-input, #1e1e1e); color: var(--ai-text, #ddd); }
+.share-role, .share-row-role { height: 30px; border-radius: 4px; border: 1px solid var(--ai-border, #4a4a4a); background: var(--ai-input, #1e1e1e); color: var(--ai-text, #ddd); padding: 0 6px; }
+.share-invite { height: 30px; padding: 0 14px; border-radius: 4px; border: none; background: var(--ai-accent, #2d7ff9); color: #fff; cursor: pointer; }
+.share-msg { font-size: 11px; color: var(--ai-danger, #f88); min-height: 14px; margin-bottom: 8px; }
+.share-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+.share-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.share-who { flex: 1; font-size: 12px; color: var(--ai-text, #ddd); overflow: hidden; text-overflow: ellipsis; }
