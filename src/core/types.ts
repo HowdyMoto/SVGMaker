@@ -41,7 +41,7 @@ export interface ShapeStyle {
 
 export interface ShapeData {
   id: string;
-  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean' | 'frame';
+  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean' | 'frame' | 'appearance';
   element: SVGElement;
   name: string;
   style: ShapeStyle;
@@ -55,6 +55,22 @@ export interface ShapeData {
    *  `children` are the editable operands; a cached <path data-bool-result> child
    *  holds the computed geometry. See core/boolean.ts and AppState.createBoolean. */
   booleanOp?: 'unite' | 'subtract' | 'intersect' | 'exclude';
+}
+
+/**
+ * One layer of an Appearance stack (Illustrator's Appearance panel): a fill or a
+ * stroke painted over the object's geometry. An object with more than one fill or
+ * stroke is stored as a `<g data-appearance>` wrapper whose child render-clones
+ * are regenerated from this stack; see AppState.setAppearance. Array order is
+ * TOP-first: layers[0] paints on top.
+ */
+export interface AppearanceLayer {
+  t: 'fill' | 'stroke';
+  paint: string;   // hex colour, gradient/pattern url(...), or 'none'
+  opacity: number; // 0–1
+  width?: number;  // stroke weight (stroke layers only)
+  blend?: string;  // optional mix-blend-mode for this layer
+  visible?: boolean; // eye toggle; undefined/true = shown
 }
 
 /** Drop-shadow parameters for an object effect (see AppState.setObjectShadow). */
