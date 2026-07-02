@@ -298,13 +298,35 @@ export class AppState {
   }
 
   /** The top-level frame whose world bounds contain (cx, cy), else null. */
+  /** A frame's ORIGIN in world (drawing-layer) coordinates, accumulating ancestor
+   *  frame transforms so nested frames convert coordinates correctly. Frames are
+   *  translate-only, so the composed matrix's e/f are the world origin. */
+  private frameWorldOrigin(el: SVGElement): { x: number; y: number } {
+    const layer = this.drawingLayer.getScreenCTM();
+    const own = (el as unknown as SVGGraphicsElement).getScreenCTM();
+    if (!layer || !own) return this.frameTranslate(el); // detached fallback
+    const m = layer.inverse().multiply(own);
+    return { x: m.e, y: m.f };
+  }
+
+  /** The DEEPEST frame whose world bounds contain (cx, cy), or null. Scans every
+   *  frame element (including nested ones), not just top-level frames. */
   private frameAtPoint(cx: number, cy: number): ShapeData | null {
-    const frames = this.shapes.filter(s => s.type === 'frame');
-    for (let i = frames.length - 1; i >= 0; i--) { // topmost first
-      const a = this.frameToArtboard(frames[i]);
-      if (cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height) return frames[i];
+    let best: SVGElement | null = null;
+    let bestDepth = -1;
+    for (const el of Array.from(this.drawingLayer.querySelectorAll('g[data-frame]')) as SVGElement[]) {
+      const o = this.frameWorldOrigin(el);
+      const w = parseFloat(el.getAttribute('data-frame-w') ?? '0');
+      const h = parseFloat(el.getAttribute('data-frame-h') ?? '0');
+      if (cx < o.x || cx > o.x + w || cy < o.y || cy > o.y + h) continue;
+      let depth = 0;
+      const layer: Element = this.drawingLayer;
+      for (let p: Element | null = el.parentElement; p && p !== layer; p = p.parentElement) {
+        if (p.hasAttribute('data-frame')) depth++;
+      }
+      if (depth > bestDepth) { bestDepth = depth; best = el; }
     }
-    return null;
+    return best ? this.findShapeById(best.id) : null;
   }
 
   // Keep the legacy getter for backward compat with align, export, etc.
@@ -331,9 +353,19 @@ export class AppState {
   /** Create a frame (world coords). Returns the new frame shape's id. */
   addFrame(x: number, y: number, w: number, h: number, name: string): string {
     const g = this.createFrameElement(x, y, w, h, name);
-    this.drawingLayer.appendChild(g);
+    // A frame drawn inside another frame nests within it (searched BEFORE g is in
+    // the DOM, so it can't match itself); its transform becomes container-local.
+    const container = this.frameAtPoint(x + w / 2, y + h / 2);
+    if (container) {
+      const o = this.frameWorldOrigin(container.element);
+      g.setAttribute('transform', `translate(${x - o.x} ${y - o.y})`);
+      container.element.appendChild(g);
+    } else {
+      this.drawingLayer.appendChild(g);
+    }
     this.rebuildShapesFromDOM();
-    this.activeArtboardId = g.id;
+    // Only TOP-LEVEL frames act as artboards; a nested frame is a clipped container.
+    if (!container) this.activeArtboardId = g.id;
     this.selectedShapeIds = [g.id];
     this.saveHistory();
     this.onChangeCallback();
@@ -387,7 +419,7 @@ export class AppState {
       const el = shape.element;
       const curParent = el.parentElement as SVGElement | null;
       const curFrameEl = curParent?.hasAttribute?.('data-frame') ? curParent : null;
-      const curOff = curFrameEl ? this.frameTranslate(curFrameEl) : { x: 0, y: 0 };
+      const curOff = curFrameEl ? this.frameWorldOrigin(curFrameEl) : { x: 0, y: 0 };
       let bbox: DOMRect;
       try { bbox = (el as unknown as SVGGraphicsElement).getBBox(); } catch { continue; }
       const cx = curOff.x + bbox.x + bbox.width / 2;
@@ -395,7 +427,7 @@ export class AppState {
       const targetFrame = this.frameAtPoint(cx, cy);
       const targetEl: SVGElement = targetFrame ? (targetFrame.element as SVGElement) : this.drawingLayer;
       if (targetEl === curParent) continue; // unchanged
-      const tOff = targetFrame ? this.frameToArtboard(targetFrame) : { x: 0, y: 0 };
+      const tOff = targetFrame ? this.frameWorldOrigin(targetFrame.element) : { x: 0, y: 0 };
       const dx = curOff.x - tOff.x, dy = curOff.y - tOff.y; // cur-local → target-local
       if (dx !== 0 || dy !== 0) this.offsetElement(el, dx, dy);
       targetEl.appendChild(el);
@@ -541,7 +573,7 @@ export class AppState {
     // (converted to frame-local coords). Otherwise it stays a top-level shape.
     const frame = this.frameForNewElement(shape.element);
     if (frame) {
-      const a = this.frameToArtboard(frame);
+      const a = this.frameWorldOrigin(frame.element); // accumulates nested frames
       this.offsetElement(shape.element, -a.x, -a.y); // world → frame-local
       frame.element.appendChild(shape.element);
       this.rebuildShapesFromDOM(); // now nested under the frame → resync model
