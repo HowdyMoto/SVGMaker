@@ -1,5 +1,12 @@
 import type { CanvasController } from '../core/canvas';
 
+/** Read a design-system token off :root so the canvas-drawn rulers track the
+ *  CSS palette (fallbacks match the current values in style.css). */
+function cssVar(name: string, fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 export function drawRulers(canvas: CanvasController): void {
   drawHorizontalRuler(canvas);
   drawVerticalRuler(canvas);
@@ -19,11 +26,11 @@ function drawHorizontalRuler(canvas: CanvasController): void {
   const vb = canvas.getViewBox();
   const zoom = canvas.getZoom();
 
-  ctx.fillStyle = '#3c3c3c';
+  ctx.fillStyle = cssVar('--ai-panel-dark', '#1c1f26');
   ctx.fillRect(0, 0, rect.width, rect.height);
 
-  ctx.fillStyle = '#999';
-  ctx.strokeStyle = '#666';
+  ctx.fillStyle = cssVar('--ai-text-dim', '#868d9b');
+  ctx.strokeStyle = cssVar('--ai-border-light', '#3b414f');
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
 
@@ -59,11 +66,11 @@ function drawVerticalRuler(canvas: CanvasController): void {
   const vb = canvas.getViewBox();
   const zoom = canvas.getZoom();
 
-  ctx.fillStyle = '#3c3c3c';
+  ctx.fillStyle = cssVar('--ai-panel-dark', '#1c1f26');
   ctx.fillRect(0, 0, rect.width, rect.height);
 
-  ctx.fillStyle = '#999';
-  ctx.strokeStyle = '#666';
+  ctx.fillStyle = cssVar('--ai-text-dim', '#868d9b');
+  ctx.strokeStyle = cssVar('--ai-border-light', '#3b414f');
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
 

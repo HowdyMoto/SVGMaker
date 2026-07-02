@@ -5,29 +5,32 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  /* Illustrator's exact palette */
-  --ai-bg:           #535353;
-  --ai-panel:        #3c3c3c;
-  --ai-panel-dark:   #323232;
-  --ai-panel-darker: #282828;
-  --ai-input:        #1e1e1e;
-  --ai-border:       #2a2a2a;
-  --ai-border-light: #4a4a4a;
-  --ai-text:         #cccccc;
-  --ai-text-dim:     #999999;
-  --ai-text-bright:  #e0e0e0;
-  --ai-accent:       #2196F3;
-  --ai-accent-dim:   #1976D2;
-  --ai-highlight:    #4a4a4a;
-  --ai-hover:        #555555;
-  --ai-active:       #505050;
-  --ai-btn:          #484848;
-  --ai-btn-hover:    #5a5a5a;
-  --ai-menu-bg:      #2c2c2c;
-  --ai-menu-hover:   #404040;
+  /* Modern dark palette — a cool-tinted neutral elevation ramp (deep near-black
+   * chrome, panels a step up, a slightly lighter pasteboard so the artboard
+   * floats) with a refined indigo-blue accent and soft off-white text. Variable
+   * names are unchanged, so the whole app + the design-system page update here. */
+  --ai-bg:           #2b2e36;  /* canvas pasteboard / surround */
+  --ai-panel:        #21242c;  /* main side panels */
+  --ai-panel-dark:   #1c1f26;  /* control bar / secondary chrome */
+  --ai-panel-darker: #171a20;  /* menu bar / status bar / darkest chrome */
+  --ai-input:        #14161b;  /* input wells */
+  --ai-border:       #2d313b;  /* hairline dividers on panels */
+  --ai-border-light: #3b414f;  /* stronger borders / input outlines */
+  --ai-text:         #c9cdd6;  /* primary text — soft cool off-white */
+  --ai-text-dim:     #868d9b;  /* secondary / muted */
+  --ai-text-bright:  #edf0f5;  /* headings / emphasis */
+  --ai-accent:       #4d7cfe;  /* modern indigo-blue */
+  --ai-accent-dim:   #3a5ad4;  /* selected-row background */
+  --ai-highlight:    #2a3040;  /* subtle highlight */
+  --ai-hover:        #2a3040;  /* list / row hover */
+  --ai-active:       #313849;  /* pressed / active */
+  --ai-btn:          #2a2f3b;  /* buttons */
+  --ai-btn-hover:    #353b49;  /* button hover */
+  --ai-menu-bg:      #1b1e25;  /* dropdown menu surface */
+  --ai-menu-hover:   #2a3040;  /* menu item hover */
   --ai-white:        #ffffff;
   --ai-black:        #000000;
-  --ai-danger:       #f44336;
+  --ai-danger:       #f2564d;  /* modern red */
 
   --toolbar-w: 40px;
   --left-panel-w: 240px;
@@ -1174,6 +1177,11 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   display: block;
   cursor: default;
 }
+
+/* The pasteboard is a giant SVG <rect> painted over #canvas-area; drive its fill
+ * from the palette token (CSS `fill` overrides the element's presentation
+ * attribute) so the canvas surround tracks the theme like everything else. */
+#pasteboard { fill: var(--ai-bg); }
 
 /* ---- Gesture hint HUD (modifier keys / shortcuts during a gesture) ---- */
 .gesture-hud {
