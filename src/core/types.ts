@@ -13,7 +13,7 @@ export interface BBox {
 export type ToolName =
   | 'select' | 'directSelect' | 'rect' | 'roundedRect' | 'ellipse'
   | 'line' | 'polyline' | 'path' | 'text' | 'hand' | 'zoom'
-  | 'eyedropper' | 'star' | 'polygon' | 'artboard' | 'image' | 'shapeBuilder';
+  | 'eyedropper' | 'star' | 'polygon' | 'artboard' | 'image' | 'shapeBuilder' | 'width';
 
 export interface ShapeStyle {
   fill: string;
@@ -41,7 +41,7 @@ export interface ShapeStyle {
 
 export interface ShapeData {
   id: string;
-  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean' | 'frame' | 'appearance';
+  type: 'rect' | 'ellipse' | 'line' | 'polyline' | 'path' | 'text' | 'polygon' | 'group' | 'image' | 'use' | 'boolean' | 'frame' | 'appearance' | 'width';
   element: SVGElement;
   name: string;
   style: ShapeStyle;

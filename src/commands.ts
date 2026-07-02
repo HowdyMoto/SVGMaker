@@ -245,6 +245,7 @@ export const COMMANDS: Command[] = [
   { id: 'tool.text', label: 'Type Tool', kind: 'tool', accel: 'T', run: (c) => c.setTool('text') },
   { id: 'tool.image', label: 'Image Tool', kind: 'tool', run: (c) => c.setTool('image') },
   { id: 'tool.eyedropper', label: 'Eyedropper Tool', kind: 'tool', accel: 'I', run: (c) => c.setTool('eyedropper') },
+  { id: 'tool.width', label: 'Width Tool', kind: 'tool', accel: 'Shift+W', run: (c) => c.setTool('width') },
   { id: 'tool.artboard', label: 'Artboard Tool', kind: 'tool', accel: 'Shift+O', run: (c) => c.setTool('artboard') },
   { id: 'tool.hand', label: 'Hand Tool', kind: 'tool', accel: 'H', run: (c) => c.setTool('hand') },
   { id: 'tool.zoom', label: 'Zoom Tool', kind: 'tool', accel: 'Z', run: (c) => c.setTool('zoom') },
