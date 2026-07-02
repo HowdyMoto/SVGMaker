@@ -1903,6 +1903,48 @@ export class AppState {
     this.onChangeCallback();
   }
 
+  // ---- Type on a path ----
+
+  /** True when the selection is exactly one text + one path (enables the command). */
+  canTypeOnPath(): boolean {
+    const sel = this.selectedShapeIds.map(id => this.findShapeById(id)).filter((s): s is ShapeData => !!s);
+    return sel.length === 2 && sel.some(s => s.type === 'text') && sel.some(s => s.type === 'path');
+  }
+
+  /**
+   * Flow the selected text along the selected path (Illustrator's Type on a Path).
+   * The text's content is wrapped in a `<textPath href="#pathId">`; the path stays
+   * a real sibling (so the reference round-trips) but its paint is cleared so it
+   * acts as an invisible baseline. Re-editing (text tool) updates the textPath.
+   */
+  typeTextOnPath(): boolean {
+    const sel = this.selectedShapeIds.map(id => this.findShapeById(id)).filter((s): s is ShapeData => !!s);
+    const text = sel.find(s => s.type === 'text');
+    const path = sel.find(s => s.type === 'path');
+    if (!text || !path) return false;
+    const pathId = path.element.id;
+    const content = text.element.textContent ?? '';
+
+    while (text.element.firstChild) text.element.removeChild(text.element.firstChild);
+    const tp = document.createElementNS('http://www.w3.org/2000/svg', 'textPath');
+    tp.setAttribute('href', `#${pathId}`);
+    tp.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${pathId}`); // legacy renderers
+    tp.textContent = content;
+    text.element.appendChild(tp);
+    // textPath positions along the path, so the text's own x/y no longer apply.
+    text.element.removeAttribute('x');
+    text.element.removeAttribute('y');
+    text.element.setAttribute('data-textpath', pathId);
+    // The path becomes an invisible baseline (kept for the reference + re-editing).
+    path.element.setAttribute('fill', 'none');
+    path.element.setAttribute('stroke', 'none');
+
+    this.selectedShapeIds = [text.id];
+    this.saveHistory();
+    this.onChangeCallback();
+    return true;
+  }
+
   // ---- Effects (blur / drop shadow via SVG filters) ----
   //
   // Effect parameters are the source of truth and live as data-fx-* attributes on

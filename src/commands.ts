@@ -171,6 +171,7 @@ export const COMMANDS: Command[] = [
   { id: 'path.flatten', label: 'Flatten Compound Shape', kind: 'action', enabled: (c) => primary(c)?.type === 'boolean', run: (c) => { const p = primary(c); if (p) c.state.flattenBoolean(p.id); } },
   { id: 'path.outline-stroke', label: 'Outline Stroke', kind: 'action', enabled: (c) => hasOutlineableStroke(c), run: (c) => { void c.state.outlineSelectedStroke(); } },
   { id: 'path.offset', label: 'Offset Path…', kind: 'action', enabled: hasSelection, run: (c) => showOffsetDialog(c.state) },
+  { id: 'path.type-on-path', label: 'Type on a Path', kind: 'action', enabled: (c) => c.state.canTypeOnPath(), run: (c) => { c.state.typeTextOnPath(); } },
 
   // ---- View ----
   { id: 'view.zoom-in', label: 'Zoom In', kind: 'action', accel: ['Mod+=', 'Mod+Shift+='], run: (c) => c.canvas.setZoom(c.canvas.getZoom() * 1.25) },
