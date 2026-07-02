@@ -14,6 +14,8 @@ import {
   serializeDocumentSVG, loadDocumentSVG, confirmDiscard, setProjectName,
 } from './project-file';
 import { openModal } from './modal';
+import { confirmDialog, promptDialog, saveToCloudDialog } from './dialogs';
+import { showToast as toast } from './toast';
 import { getCloudDoc, setCloudDoc, setCloudDocUpdatedAt, setCloudDocName, clearCloudDoc } from '../lib/cloud-doc';
 import {
   loadCloudProject, createCloudProject,
@@ -97,11 +99,14 @@ export async function saveToCloud(state: AppState): Promise<void> {
         newTs = await updateCloudProject(id, content, updatedAt ?? undefined);
       } catch (err) {
         if (err instanceof ProjectConflictError) {
-          const overwrite = window.confirm(
-            'This project was changed on another device since you opened it.\n\n' +
-            'OK = overwrite it with your version.\n' +
-            'Cancel = keep editing (reopen it from the cloud to get the other version).',
-          );
+          setStatus('conflict');
+          const overwrite = await confirmDialog({
+            title: 'Changed on another device',
+            message: 'This board was updated somewhere else since you opened it. Overwrite it with your version, or keep editing and reopen it to get the newer copy?',
+            confirmText: 'Overwrite',
+            cancelText: 'Keep editing',
+            danger: true,
+          });
           if (!overwrite) { setStatus('conflict'); return; }
           newTs = await updateCloudProject(id, content); // forced (no timestamp guard)
         } else {
@@ -111,9 +116,14 @@ export async function saveToCloud(state: AppState): Promise<void> {
       setCloudDocUpdatedAt(newTs);
     } else {
       const current = document.getElementById('project-name')?.textContent?.replace(/\.svg$/i, '') || 'Untitled';
-      const name = window.prompt('Save to cloud as:', current);
-      if (name === null) { setStatus('idle'); return; } // cancelled
-      const meta = await createCloudProject(name.trim() || 'Untitled', content);
+      let categories: string[] = [];
+      try { categories = await listCategories(); } catch { /* offer none */ }
+      const result = await saveToCloudDialog({ name: current, categories });
+      if (!result) { setStatus('idle'); return; } // cancelled
+      const meta = await createCloudProject(result.name, content, result.category);
+      if (result.visibility === 'public') {
+        try { await setProjectVisibility(meta.id, 'public'); } catch { /* best-effort */ }
+      }
       setCloudDoc(meta.id, meta.name, meta.updated_at);
       setProjectName(meta.name);
     }
@@ -122,7 +132,7 @@ export async function saveToCloud(state: AppState): Promise<void> {
     setStatus('saved');
   } catch (err) {
     setStatus('error');
-    alert('Cloud save failed: ' + (err instanceof Error ? err.message : String(err)));
+    toast('Cloud save failed: ' + (err instanceof Error ? err.message : String(err)));
   }
 }
 
@@ -168,27 +178,80 @@ const errMsg = (err: unknown): string => (err instanceof Error ? err.message : S
 
 type CloudTab = 'mine' | 'shared' | 'public';
 
-/** The Cloud Projects browser: My Boards / Shared with me / Public, with category
- *  filters, per-board visibility toggle, sharing, rename, and delete. */
+/** A friendly relative time ("just now", "3 days ago"), falling back to a date. */
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!then) return '';
+  const s = Math.round((Date.now() - then) / 1000);
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  if (d < 7) return `${d} day${d === 1 ? '' : 's'} ago`;
+  const w = Math.round(d / 7);
+  if (w < 5) return `${w} week${w === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Rendered-thumbnail cache, keyed by id + timestamp so an edited board refreshes.
+// A data: URL of the board's own SVG — an <img> renders it sandboxed.
+const thumbCache = new Map<string, string>();
+const thumbKey = (p: CloudProjectMeta) => `${p.id}:${p.updated_at}`;
+
+/** The Cloud Projects browser: a card grid of My Boards / Shared with me / Public,
+ *  with live artwork previews, category filters, sharing, rename, delete. */
 export async function openFromCloud(state: AppState): Promise<void> {
   if (!requireSignIn()) return;
-  const modal = openModal({ id: 'cloud-overlay', ariaLabel: 'Cloud Projects', dialogClass: 'cloud-dialog' });
+  const modal = openModal({ id: 'cloud-overlay', ariaLabel: 'Cloud Projects', dialogClass: 'cloud-dialog', closeButton: false });
   if (!modal) return; // singleton already open
 
   modal.dialog.insertAdjacentHTML('beforeend', `
-    <h1 class="cloud-title">Cloud Projects</h1>
-    <div class="cloud-tabs" role="tablist">
-      <button class="cloud-tab active" data-tab="mine">My Boards</button>
-      <button class="cloud-tab" data-tab="shared">Shared with me</button>
-      <button class="cloud-tab" data-tab="public">Public</button>
-    </div>
+    <header class="cloud-head">
+      <h1 class="cloud-title">Your work</h1>
+      <div class="cloud-segmented" role="tablist">
+        <button class="cloud-seg active" data-tab="mine">My boards</button>
+        <button class="cloud-seg" data-tab="shared">Shared</button>
+        <button class="cloud-seg" data-tab="public">Public</button>
+      </div>
+      <button class="cloud-x" aria-label="Close">✕</button>
+    </header>
     <div class="cloud-cats"></div>
-    <div class="cloud-list" aria-live="polite">Loading…</div>
+    <div class="cloud-grid" aria-live="polite"></div>
   `);
-  const listEl = modal.dialog.querySelector('.cloud-list') as HTMLElement;
+  const gridEl = modal.dialog.querySelector('.cloud-grid') as HTMLElement;
   const catsEl = modal.dialog.querySelector('.cloud-cats') as HTMLElement;
+  modal.dialog.querySelector('.cloud-x')!.addEventListener('click', () => modal.close());
   let tab: CloudTab = 'mine';
   let category: string | null = null;
+
+  // Lazy thumbnail loading: fetch each visible card's SVG and paint it, a few at
+  // a time so a big library doesn't fire dozens of requests at once.
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { io.unobserve(e.target); void loadThumb(e.target as HTMLElement); }
+    }
+  }, { root: gridEl, rootMargin: '120px' });
+  let active = 0;
+  const pending: HTMLElement[] = [];
+  const pump = () => {
+    while (active < 4 && pending.length) { const el = pending.shift()!; active++; void fillThumb(el).finally(() => { active--; pump(); }); }
+  };
+  const loadThumb = (el: HTMLElement) => { pending.push(el); pump(); };
+  const fillThumb = async (el: HTMLElement): Promise<void> => {
+    const id = el.dataset.id!, key = el.dataset.key!;
+    const img = el.querySelector('img') as HTMLImageElement | null;
+    if (!img) return;
+    let url = thumbCache.get(key);
+    if (!url) {
+      try { const full = await loadCloudProject(id); url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(full.content); thumbCache.set(key, url); }
+      catch { el.classList.add('cloud-thumb-err'); return; }
+    }
+    img.onload = () => el.classList.add('loaded');
+    img.onerror = () => el.classList.add('cloud-thumb-err');
+    img.src = url;
+  };
 
   const openOne = async (p: CloudProjectMeta): Promise<void> => {
     if (!confirmDiscard(state)) return;
@@ -205,8 +268,9 @@ export async function openFromCloud(state: AppState): Promise<void> {
         clearCloudDoc();
         setProjectName(`${full.name} (copy)`);
       }
+      io.disconnect();
       modal.close();
-    } catch (err) { alert('Open failed: ' + errMsg(err)); }
+    } catch (err) { toast(`Couldn’t open “${p.name}”: ${errMsg(err)}`); }
   };
 
   const list = (): Promise<CloudProjectMeta[]> =>
@@ -219,6 +283,7 @@ export async function openFromCloud(state: AppState): Promise<void> {
     if (tab !== 'mine') return;
     let cats: string[] = [];
     try { cats = await listCategories(); } catch { /* ignore */ }
+    if (!cats.length) return;
     const chip = (label: string, value: string | null) => {
       const b = document.createElement('button');
       b.className = 'cloud-chip' + (category === value ? ' active' : '');
@@ -230,104 +295,143 @@ export async function openFromCloud(state: AppState): Promise<void> {
     for (const c of cats) catsEl.appendChild(chip(c, c));
   };
 
+  const skeleton = (): void => {
+    gridEl.innerHTML = '';
+    for (let i = 0; i < 6; i++) {
+      const s = document.createElement('div');
+      s.className = 'cloud-card cloud-skel';
+      s.innerHTML = '<div class="cloud-thumb"></div><div class="cloud-cardmeta"><span class="cloud-skelbar"></span><span class="cloud-skelbar short"></span></div>';
+      gridEl.appendChild(s);
+    }
+  };
+
   const render = async (): Promise<void> => {
+    io.disconnect();
+    skeleton();
     try {
       let projects = await list();
       if (tab === 'mine' && category) projects = projects.filter(p => (p.category ?? null) === category);
-      if (projects.length === 0) {
-        listEl.innerHTML = `<div class="cloud-empty">${tab === 'mine'
-          ? 'No boards yet. Use “Save to Cloud” to add one.'
-          : tab === 'shared' ? 'Nothing shared with you yet.' : 'No public boards yet.'}</div>`;
-        return;
-      }
-      listEl.innerHTML = '';
-      for (const p of projects) listEl.appendChild(rowFor(p));
+      if (projects.length === 0) { gridEl.innerHTML = emptyState(tab); return; }
+      gridEl.innerHTML = '';
+      for (const p of projects) { const card = cardFor(p); gridEl.appendChild(card); io.observe(card.querySelector('.cloud-thumb')!); }
     } catch (err) {
-      listEl.innerHTML = `<div class="cloud-empty">Failed to load: ${escapeHtml(errMsg(err))}</div>`;
+      gridEl.innerHTML = `<div class="cloud-empty"><p>Couldn’t load your boards.</p><span>${escapeHtml(errMsg(err))}</span></div>`;
     }
   };
 
   const refresh = async (): Promise<void> => { await renderCats(); await render(); };
 
-  modal.dialog.querySelectorAll('.cloud-tab').forEach((btn) => {
+  modal.dialog.querySelectorAll('.cloud-seg').forEach((btn) => {
     btn.addEventListener('click', () => {
       tab = (btn as HTMLElement).dataset.tab as CloudTab;
       category = null;
-      modal.dialog.querySelectorAll('.cloud-tab').forEach(b => b.classList.toggle('active', b === btn));
+      modal.dialog.querySelectorAll('.cloud-seg').forEach(b => b.classList.toggle('active', b === btn));
       void refresh();
     });
   });
 
-  const rowFor = (p: CloudProjectMeta): HTMLElement => {
-    const row = document.createElement('div');
-    row.className = 'cloud-row';
-    const badges: string[] = [];
-    if (p.category) badges.push(`<span class="cloud-badge">${escapeHtml(p.category)}</span>`);
-    if (p.role) badges.push(`<span class="cloud-badge">${p.role === 'editor' ? 'Can edit' : 'View only'}</span>`);
-    if (tab === 'public' && p.owned) badges.push('<span class="cloud-badge">Yours</span>');
-    row.innerHTML = `
-      <button class="cloud-open" title="Open this board">
-        <span class="cloud-name"></span>
-        <span class="cloud-when"></span>
-      </button>
-      <span class="cloud-badges">${badges.join('')}</span>
-      <span class="cloud-actions"></span>`;
-    (row.querySelector('.cloud-name') as HTMLElement).textContent = p.name;
-    (row.querySelector('.cloud-when') as HTMLElement).textContent = new Date(p.updated_at).toLocaleDateString();
-    row.querySelector('.cloud-open')!.addEventListener('click', () => { void openOne(p); });
+  const cardFor = (p: CloudProjectMeta): HTMLElement => {
+    const card = document.createElement('div');
+    card.className = 'cloud-card';
 
-    const actions = row.querySelector('.cloud-actions') as HTMLElement;
+    const thumb = document.createElement('button');
+    thumb.className = 'cloud-thumb';
+    thumb.dataset.id = p.id;
+    thumb.dataset.key = thumbKey(p);
+    thumb.title = `Open “${p.name}”`;
+    thumb.innerHTML = '<img alt="" /><span class="cloud-thumb-fallback"></span>';
+    thumb.addEventListener('click', () => { void openOne(p); });
+    if (p.owned && p.visibility === 'public') thumb.insertAdjacentHTML('beforeend', '<span class="cloud-pill">Public</span>');
+    if (p.role) thumb.insertAdjacentHTML('beforeend', `<span class="cloud-pill">${p.role === 'editor' ? 'Can edit' : 'View only'}</span>`);
+    card.appendChild(thumb);
+
+    const meta = document.createElement('div');
+    meta.className = 'cloud-cardmeta';
+    const info = document.createElement('div');
+    info.className = 'cloud-cardinfo';
+    const name = document.createElement('div');
+    name.className = 'cloud-cardname';
+    name.textContent = p.name;
+    const sub = document.createElement('div');
+    sub.className = 'cloud-cardsub';
+    sub.textContent = timeAgo(p.updated_at) + (p.category ? ` · ${p.category}` : '');
+    info.append(name, sub);
+    meta.appendChild(info);
+
     if (p.owned) {
-      // Visibility toggle
-      const vis = document.createElement('button');
-      const isPublic = p.visibility === 'public';
-      vis.className = 'cloud-act' + (isPublic ? ' cloud-act-on' : '');
-      vis.textContent = isPublic ? 'Public' : 'Private';
-      vis.title = 'Toggle public/private';
-      vis.addEventListener('click', async () => {
-        try { await setProjectVisibility(p.id, isPublic ? 'private' : 'public'); await render(); }
-        catch (err) { alert('Failed: ' + errMsg(err)); }
-      });
-      actions.appendChild(vis);
-
-      actions.appendChild(actBtn('Share', () => openShareDialog(p.id, p.name)));
-      actions.appendChild(actBtn('Category', async () => {
-        const c = window.prompt('Category (blank to clear):', p.category ?? '');
-        if (c === null) return;
-        try { await setProjectCategory(p.id, c.trim() || null); await refresh(); }
-        catch (err) { alert('Failed: ' + errMsg(err)); }
-      }));
-      actions.appendChild(actBtn('Rename', async () => {
-        const name = window.prompt('Rename to:', p.name);
-        if (name === null) return;
-        const next = name.trim() || p.name;
-        try {
-          const ts = await renameCloudProject(p.id, next);
-          if (getCloudDoc().id === p.id) { setCloudDocName(next); setCloudDocUpdatedAt(ts); setProjectName(next); }
-          await render();
-        } catch (err) { alert('Rename failed: ' + errMsg(err)); }
-      }));
-      actions.appendChild(actBtn('Delete', async () => {
-        if (!window.confirm(`Delete “${p.name}”? This can't be undone.`)) return;
-        try {
-          await deleteCloudProject(p.id);
-          if (getCloudDoc().id === p.id) clearCloudDoc();
-          await render();
-        } catch (err) { alert('Delete failed: ' + errMsg(err)); }
-      }, 'cloud-act-danger'));
+      const more = document.createElement('button');
+      more.className = 'cloud-more';
+      more.setAttribute('aria-label', 'More actions');
+      more.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="3" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="13" cy="8" r="1.4"/></svg>';
+      more.addEventListener('click', (e) => { e.stopPropagation(); openCardMenu(more, p); });
+      meta.appendChild(more);
     }
-    return row;
+    card.appendChild(meta);
+    return card;
+  };
+
+  const openCardMenu = (anchor: HTMLElement, p: CloudProjectMeta): void => {
+    document.querySelector('.cloud-menu')?.remove();
+    const menu = document.createElement('div');
+    menu.className = 'cloud-menu';
+    const item = (label: string, fn: () => void, danger = false) => {
+      const b = document.createElement('button');
+      b.className = 'cloud-menu-item' + (danger ? ' danger' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { menu.remove(); fn(); });
+      menu.appendChild(b);
+    };
+    const isPublic = p.visibility === 'public';
+    item(isPublic ? 'Make private' : 'Make public', async () => {
+      try { await setProjectVisibility(p.id, isPublic ? 'private' : 'public'); await render(); }
+      catch (err) { toast('Failed: ' + errMsg(err)); }
+    });
+    item('Share…', () => openShareDialog(p.id, p.name));
+    item('Rename…', async () => {
+      const next = await promptDialog({ title: 'Rename board', label: 'Name', value: p.name, confirmText: 'Rename' });
+      if (next === null || !next || next === p.name) return;
+      try {
+        const ts = await renameCloudProject(p.id, next);
+        if (getCloudDoc().id === p.id) { setCloudDocName(next); setCloudDocUpdatedAt(ts); setProjectName(next); }
+        await render();
+      } catch (err) { toast('Rename failed: ' + errMsg(err)); }
+    });
+    item('Set category…', async () => {
+      let categories: string[] = [];
+      try { categories = await listCategories(); } catch { /* none */ }
+      const c = await promptDialog({ title: 'Set category', label: 'Category', value: p.category ?? '', placeholder: 'Blank to clear', suggestions: categories, confirmText: 'Save' });
+      if (c === null) return;
+      try { await setProjectCategory(p.id, c || null); await refresh(); }
+      catch (err) { toast('Failed: ' + errMsg(err)); }
+    });
+    item('Delete', async () => {
+      const ok = await confirmDialog({ title: `Delete “${p.name}”?`, message: 'This permanently removes the board and can’t be undone.', confirmText: 'Delete', danger: true });
+      if (!ok) return;
+      try {
+        await deleteCloudProject(p.id);
+        if (getCloudDoc().id === p.id) clearCloudDoc();
+        await render();
+      } catch (err) { toast('Delete failed: ' + errMsg(err)); }
+    }, true);
+
+    modal.dialog.appendChild(menu);
+    const a = anchor.getBoundingClientRect();
+    const d = modal.dialog.getBoundingClientRect();
+    menu.style.top = `${a.bottom - d.top + 4}px`;
+    menu.style.right = `${d.right - a.right}px`;
+    const off = (e: MouseEvent) => { if (!menu.contains(e.target as Node) && e.target !== anchor) { menu.remove(); document.removeEventListener('mousedown', off, true); } };
+    setTimeout(() => document.addEventListener('mousedown', off, true), 0);
   };
 
   void refresh();
 }
 
-function actBtn(label: string, onClick: () => void, cls = ''): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.className = `cloud-act ${cls}`.trim();
-  b.textContent = label;
-  b.addEventListener('click', onClick);
-  return b;
+function emptyState(tab: CloudTab): string {
+  const [title, sub] = tab === 'mine'
+    ? ['Nothing saved yet', 'Use “Save to Cloud” to keep your work here and open it anywhere.']
+    : tab === 'shared' ? ['Nothing shared with you', 'Boards other people share with you will show up here.']
+    : ['No public boards yet', 'Public boards from the community will appear here.'];
+  return `<div class="cloud-empty"><svg viewBox="0 0 48 48" width="48" height="48" class="cloud-empty-ico"><path d="M14 30a8 8 0 0 1 .8-16 11 11 0 0 1 21 3 7 7 0 0 1-1.8 13H14z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><p>${title}</p><span>${sub}</span></div>`;
 }
 
 /** Share dialog: list collaborators, invite by email with a role, change/remove. */
@@ -367,7 +471,7 @@ export function openShareDialog(projectId: string, name: string): void {
             <option value="viewer">Can view</option>
             <option value="editor">Can edit</option>
           </select>
-          <button class="cloud-act cloud-act-danger share-remove">Remove</button>`;
+          <button class="share-remove">Remove</button>`;
         (row.querySelector('.share-who') as HTMLElement).textContent = sh.grantee_email ?? sh.grantee_id;
         (row.querySelector('.share-row-role') as HTMLSelectElement).value = sh.role;
         row.querySelector('.share-row-role')!.addEventListener('change', async (e) => {
