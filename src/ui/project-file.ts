@@ -80,7 +80,7 @@ interface DocMeta {
   app: AppId;
   version: number;
   artboards: Artboard[];
-  activeArtboardId: string | null;
+  activeFrameId: string | null;
   shapes: SerializedShape[];
   defaultStyle: ShapeStyle;
   fillNone: boolean;
@@ -92,7 +92,7 @@ function buildMeta(state: AppState): DocMeta {
     app: APP_ID,
     version: FORMAT_VERSION,
     artboards: state.artboards.map(ab => ({ ...ab })),
-    activeArtboardId: state.activeArtboardId,
+    activeFrameId: state.activeFrameId,
     shapes: state.shapes.map(s => ({
       id: s.id, type: s.type, name: s.name,
       style: { ...s.style }, visible: s.visible, locked: s.locked,
@@ -199,9 +199,9 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
       ? meta.artboards.map(a => ({ x: a.x, y: a.y, width: a.width, height: a.height, name: a.name }))
       : [{ x: 0, y: 0, width: 960, height: 540, name: 'Frame 1' }];
     state.migrateContentToFrames(boards);
-    state.activeArtboardId =
-      (meta.activeArtboardId && state.getArtboardById(meta.activeArtboardId))
-        ? meta.activeArtboardId
+    state.activeFrameId =
+      (meta.activeFrameId && state.getArtboardById(meta.activeFrameId))
+        ? meta.activeFrameId
         : (state.artboards[0]?.id ?? null);
   } else {
     // ---- Foreign SVG: import shapes and wrap them in a single frame ----
@@ -219,10 +219,10 @@ export function loadDocumentSVG(state: AppState, svgString: string): void {
     const x = hasVb ? vb![0] : 0;
     const y = hasVb ? vb![1] : 0;
     state.migrateContentToFrames([{ x, y, width: w, height: h, name: 'Frame 1' }]);
-    state.activeArtboardId = state.artboards[0]?.id ?? null;
+    state.activeFrameId = state.artboards[0]?.id ?? null;
   }
 
-  state.selectedArtboardId = null;
+  state.selectedFrameId = null;
   state.saveHistory();
   state.markClean();
   state.onChange_public();
@@ -369,7 +369,7 @@ interface ProjectFile {
   version: number;
   app: AppId;
   artboards: Artboard[];
-  activeArtboardId: string | null;
+  activeFrameId: string | null;
   shapes: SerializedShape[];
   svgContent: string;
   defaultStyle: ShapeStyle;
@@ -387,7 +387,7 @@ export function loadProject(state: AppState, json: string): void {
   if (project.artboards?.length) {
     state.artboards.length = 0;
     for (const ab of project.artboards) state.artboards.push({ ...ab });
-    state.activeArtboardId = project.activeArtboardId ?? state.artboards[0].id;
+    state.activeFrameId = project.activeFrameId ?? state.artboards[0].id;
   }
 
   state.importSVGMarkup(project.svgContent);
@@ -396,7 +396,7 @@ export function loadProject(state: AppState, json: string): void {
   state.fillNone = project.fillNone ?? false;
   state.strokeNone = project.strokeNone ?? false;
 
-  state.selectedArtboardId = null;
+  state.selectedFrameId = null;
   state.saveHistory();
   state.markClean();
   state.onChange_public();

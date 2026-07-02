@@ -19,13 +19,13 @@ export class ArtboardTool extends BaseTool {
   activate(): void {
     this.svgCanvas.style.cursor = 'crosshair';
     // Highlight artboards with editable borders
-    this.state.selectedArtboardId = this.state.activeArtboardId;
+    this.state.selectedFrameId = this.state.activeFrameId;
     this.state.onChange_public();
   }
 
   deactivate(): void {
     this.svgCanvas.style.cursor = '';
-    this.state.selectedArtboardId = null;
+    this.state.selectedFrameId = null;
     this.cleanup();
     this.state.onChange_public();
   }
@@ -50,7 +50,7 @@ export class ArtboardTool extends BaseTool {
     // Check if clicking inside an existing artboard
     const clickedAb = this.findArtboardAt(pt);
     if (clickedAb) {
-      this.state.selectedArtboardId = clickedAb.id;
+      this.state.selectedFrameId = clickedAb.id;
       this.state.setActiveArtboard(clickedAb.id);
       this.mode = 'moving';
       this.state.setInteractive(true);
@@ -125,13 +125,13 @@ export class ArtboardTool extends BaseTool {
 
       if (w >= 20 && h >= 20) {
         const ab: Artboard = {
-          id: this.state.nextArtboardId(),
+          id: '', // ignored — addArtboard/addFrame mints the real shape-N id
           x: Math.round(x), y: Math.round(y),
           width: Math.round(w), height: Math.round(h),
-          name: `Artboard ${this.state.artboards.length + 1}`,
+          name: `Frame ${this.state.artboards.length + 1}`,
         };
-        this.state.addArtboard(ab);
-        this.state.selectedArtboardId = ab.id;
+        // Use the id addFrame actually assigned, not a discarded ab-N.
+        this.state.selectedFrameId = this.state.addArtboard(ab);
       }
     } else if (this.mode === 'moving' || this.mode === 'resizing') {
       this.state.saveHistory();
@@ -145,8 +145,8 @@ export class ArtboardTool extends BaseTool {
   }
 
   onKeyDown(e: KeyboardEvent): void {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedArtboardId) {
-      this.state.removeArtboard(this.state.selectedArtboardId);
+    if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedFrameId) {
+      this.state.removeArtboard(this.state.selectedFrameId);
     }
   }
 
