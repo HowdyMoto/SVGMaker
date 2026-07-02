@@ -41,25 +41,14 @@ export function renderArtboards(state: AppState, svgCanvas: SVGSVGElement): void
   handlesLayer.innerHTML = '';
 
   const isArtboardTool = state.currentTool === 'artboard';
-  const showGrid = document.getElementById('artboard-grid')?.style.display !== 'none';
 
   for (const ab of state.artboards) {
     const isActive = ab.id === state.activeArtboardId;
     const isSelected = ab.id === state.selectedArtboardId && isArtboardTool;
 
-    // Frames now render their own background + clip (the .frame-bg rect inside the
+    // Frames render their own background + clip (the .frame-bg rect inside the
     // frame <g>); this renderer only draws overlay CHROME (border, label, handles).
-    // Grid overlay if enabled
-    if (showGrid) {
-      const grid = document.createElementNS(NS, 'rect');
-      grid.setAttribute('x', String(ab.x));
-      grid.setAttribute('y', String(ab.y));
-      grid.setAttribute('width', String(ab.width));
-      grid.setAttribute('height', String(ab.height));
-      grid.setAttribute('fill', 'url(#grid-large)');
-      grid.setAttribute('pointer-events', 'none');
-      abLayer.appendChild(grid);
-    }
+    // The per-frame grid + rulers are drawn above content by frame-guides.ts.
 
     // Border
     const border = document.createElementNS(NS, 'rect');

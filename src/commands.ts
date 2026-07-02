@@ -184,12 +184,26 @@ export const COMMANDS: Command[] = [
     run: (c) => { c.state.showTransparency = !c.state.showTransparency; c.state.onChange_public(); },
   },
   {
+    // Grid / rulers now belong to the ACTIVE FRAME (see the Frame panel). These
+    // View items are quick toggles for that frame; disabled with no frame.
     id: 'view.toggle-grid', label: 'Show Grid', kind: 'toggle', accel: "Mod+'",
-    checked: () => { const g = document.getElementById('artboard-grid'); return !!g && g.style.display !== 'none'; },
+    enabled: (c) => !!c.state.activeArtboardId,
+    checked: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id)?.visible; },
     run: (c) => {
-      const grid = document.getElementById('artboard-grid');
-      if (grid) grid.style.display = grid.style.display === 'none' ? '' : 'none';
-      c.state.onChange_public();
+      const id = c.state.activeArtboardId; if (!id) return;
+      const g = c.state.getFrameGrid(id);
+      if (g) c.state.setFrameGrid(id, { ...g, visible: !g.visible });
+      else c.state.setFrameGrid(id, { size: 8, subdivisions: 4, color: '#7f8fa6', visible: true, snap: false });
+    },
+  },
+  {
+    id: 'view.toggle-grid-snap', label: 'Snap to Grid', kind: 'toggle',
+    enabled: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id); },
+    checked: (c) => { const id = c.state.activeArtboardId; return !!id && !!c.state.getFrameGrid(id)?.snap; },
+    run: (c) => {
+      const id = c.state.activeArtboardId; if (!id) return;
+      const g = c.state.getFrameGrid(id); if (!g) return;
+      c.state.setFrameGrid(id, { ...g, snap: !g.snap });
     },
   },
   {
@@ -198,15 +212,10 @@ export const COMMANDS: Command[] = [
     run: (c) => { c.state.snapEnabled = !c.state.snapEnabled; },
   },
   {
-    // No accelerator: Ctrl+R is reserved for browser reload (intercepting it
-    // surprised users). Bind one here later if it lives behind an installed PWA.
-    id: 'view.toggle-rulers', label: 'Show Rulers', kind: 'toggle',
-    checked: () => { const r = document.getElementById('ruler-h'); return !!r && !r.classList.contains('hidden'); },
-    run: () => {
-      const ids = ['ruler-h', 'ruler-v', 'ruler-corner'];
-      const hidden = document.getElementById('ruler-h')?.classList.contains('hidden') ?? false;
-      for (const id of ids) document.getElementById(id)?.classList.toggle('hidden', !hidden);
-    },
+    id: 'view.toggle-rulers', label: 'Show Frame Rulers', kind: 'toggle',
+    enabled: (c) => !!c.state.activeArtboardId,
+    checked: (c) => { const id = c.state.activeArtboardId; return !!id && c.state.getFrameRulers(id); },
+    run: (c) => { const id = c.state.activeArtboardId; if (id) c.state.setFrameRulers(id, !c.state.getFrameRulers(id)); },
   },
 
   // ---- Color defaults (affect the style applied to NEW shapes) ----

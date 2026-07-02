@@ -129,8 +129,9 @@
             <div class="menu-divider"></div>
             <button data-action="view.toggle-transparency">Show Transparency</button>
             <button data-action="view.toggle-grid">Show Grid</button>
+            <button data-action="view.toggle-grid-snap">Snap to Grid</button>
             <button data-action="view.toggle-snap">Smart Guides</button>
-            <button data-action="view.toggle-rulers">Show Rulers</button>
+            <button data-action="view.toggle-rulers">Show Frame Rulers</button>
           </div>
         </div>
         <div class="menu-dropdown" data-menu="help">
@@ -320,13 +321,6 @@
         </div>
       </aside>
 
-      <!-- Ruler Top -->
-      <div id="ruler-corner"></div>
-      <canvas id="ruler-h" height="20"></canvas>
-
-      <!-- Ruler Left -->
-      <canvas id="ruler-v" width="20"></canvas>
-
       <!-- Canvas Area -->
       <main id="canvas-area">
         <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg">
@@ -348,8 +342,6 @@
           <rect id="pasteboard" x="-10000" y="-10000" width="20000" height="20000" fill="#000000"/>
           <!-- Artboard backgrounds rendered dynamically -->
           <g id="artboards-layer"></g>
-          <!-- Grid overlay (toggled via View menu) -->
-          <rect id="artboard-grid" x="0" y="0" width="0" height="0" fill="url(#grid-large)" style="display:none" pointer-events="none"/>
           <!-- Drawing content -->
           <g id="drawing-layer"></g>
           <!-- Shape Builder face overlay (owned by ShapeBuilderTool; empty otherwise) -->
@@ -397,6 +389,41 @@
             <div class="panel-row">
               <div class="panel-field">
                 <label title="Rotation">R</label><input type="number" id="prop-rotation" value="0" step="1" /><span class="panel-unit">&deg;</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Frame (grid + rulers; shown when a Frame is selected) -->
+        <div class="panel" id="panel-frame" style="display:none">
+          <div class="panel-header" data-panel="frame">
+            <span>Frame</span>
+            <button class="panel-collapse">&#x25BC;</button>
+          </div>
+          <div class="panel-body">
+            <div class="fp-row">
+              <span class="appearance-label">Rulers</span>
+              <button class="fp-toggle" id="fp-rulers">Off</button>
+            </div>
+            <div class="fp-grid-head">
+              <span class="appearance-label">Layout grid</span>
+              <button id="fp-grid-add" class="ap-add-btn" title="Add a grid to this frame">+ Grid</button>
+              <button id="fp-grid-remove" class="fp-icon" title="Remove grid" style="display:none">&#x2715;</button>
+            </div>
+            <div id="fp-grid-fields" style="display:none">
+              <div class="fp-grid-row">
+                <button class="fp-vis" id="fp-grid-vis" title="Show/Hide grid">
+                  <svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 3.5C4.5 3.5 1.7 6 1 8c.7 2 3.5 4.5 7 4.5s6.3-2.5 7-4.5c-.7-2-3.5-4.5-7-4.5z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+                </button>
+                <input type="color" id="fp-grid-color" class="ap-color" title="Grid colour" />
+                <label class="fp-mini">Size</label>
+                <input type="number" id="fp-grid-size" min="1" step="1" value="8" class="appearance-weight" title="Grid spacing (px)" />
+                <label class="fp-mini">Subdiv</label>
+                <input type="number" id="fp-grid-subdiv" min="1" step="1" value="4" class="appearance-weight" title="Major line every N cells" />
+              </div>
+              <div class="fp-row">
+                <span class="appearance-label">Snap to grid</span>
+                <button class="fp-toggle" id="fp-grid-snap">Off</button>
               </div>
             </div>
           </div>

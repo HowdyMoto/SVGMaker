@@ -27,11 +27,12 @@ import { updateNodeHint } from './ui/node-hint';
 import { setupProperties, updatePropertiesPanel } from './ui/properties';
 import { setupEffects, updateEffectsPanel } from './ui/effects';
 import { setupAppearanceStack, updateAppearanceStack } from './ui/appearance';
+import { setupFramePanel, updateFramePanel } from './ui/frame-panel';
 import { setupWidthPanel, updateWidthPanel } from './ui/width-panel';
 import { setupMarkers, updateMarkersPanel } from './ui/markers';
 import { updateLayersPanel, setupLayerButtons } from './ui/layers';
 import { setupMenus } from './ui/menus';
-import { drawRulers } from './ui/rulers';
+import { renderFrameGuides } from './ui/frame-guides';
 import { setupColorPicker } from './ui/color-picker';
 import { setupAlign } from './ui/align';
 import { setupSwatches } from './ui/swatches';
@@ -135,6 +136,7 @@ function onStateChange(): void {
 
   // Canvas overlays must track the pointer every frame.
   renderArtboards(state, svgCanvas);
+  renderFrameGuides(state, svgCanvas, canvas.getZoom());
   updateSelectionOverlay(state, selectionLayer);
   renderNodeOverlay(state, guidesLayer);
   updateNodeHint(state);
@@ -150,6 +152,7 @@ function onStateChange(): void {
   updatePropertiesPanel(state);
   updateEffectsPanel(state);
   updateAppearanceStack(state);
+  updateFramePanel(state);
   updateWidthPanel(state);
   updateMarkersPanel(state);
   updateLayersPanel(state);
@@ -311,9 +314,10 @@ window.addEventListener('keyup', (e: KeyboardEvent) => {
 document.getElementById('tb-swap')?.addEventListener('click', () => runCommand('color.swap-fill-stroke', commandCtx));
 document.getElementById('tb-default')?.addEventListener('click', () => runCommand('color.default-colors', commandCtx));
 
-// Rulers update on view change
+// Frame rulers re-render on view change (their tick spacing & labels are sized in
+// screen units, so they must refresh when the zoom changes).
 canvas.setOnViewChange(() => {
-  drawRulers(canvas);
+  renderFrameGuides(state, svgCanvas, canvas.getZoom());
   updatePathfinderPopover(state); // keep the floating popover glued to the selection
 });
 
@@ -327,6 +331,7 @@ setupMenus(commandCtx);
 setupProperties(state);
 setupEffects(state);
 setupAppearanceStack(state);
+setupFramePanel(state);
 setupWidthPanel(state);
 setupMarkers(state);
 setupLayerButtons(commandCtx);
@@ -350,7 +355,7 @@ commandCtx.openCommandPalette = createCommandPalette(commandCtx).open;
 const initBounds = getArtboardsBounds();
 canvas.initSize(initBounds);
 renderArtboards(state, svgCanvas);
-drawRulers(canvas);
+renderFrameGuides(state, svgCanvas, canvas.getZoom());
 
 svgCanvas.setAttribute('data-tool', 'select');
 
@@ -407,7 +412,7 @@ function readDroppedDoc(file: File): void {
 
 window.addEventListener('resize', () => {
   canvas.initSize(getArtboardsBounds());
-  drawRulers(canvas);
+  renderFrameGuides(state, svgCanvas, canvas.getZoom());
 });
 
 // Warn before closing/reloading the tab with unsaved changes.

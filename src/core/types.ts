@@ -94,6 +94,17 @@ export interface HistoryEntry {
   artboardsJson: string;
 }
 
+/** A frame's editor grid (Figma-style layout grid): a uniform grid drawn inside
+ *  the frame that can also snap moves/resizes. Editor chrome — persisted per frame
+ *  (data-grid-* attributes) but never part of the exported artwork. */
+export interface FrameGrid {
+  size: number;         // spacing of the finest lines, in px (frame-local)
+  subdivisions: number; // every Nth line is a major line (1 = all lines equal)
+  color: string;        // hex line colour
+  visible: boolean;     // drawn on the canvas
+  snap: boolean;        // quantize moves/resizes to this grid
+}
+
 export interface Artboard {
   id: string;
   x: number;
@@ -101,6 +112,10 @@ export interface Artboard {
   width: number;
   height: number;
   name: string;
+  /** Editor grid config (see FrameGrid); absent when the frame has no grid. */
+  grid?: FrameGrid | null;
+  /** Whether rulers are shown along this frame's edges. */
+  rulers?: boolean;
 }
 
 export type ExportFormat = 'svg' | 'png' | 'jpg';
