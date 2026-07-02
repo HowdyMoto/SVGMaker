@@ -322,7 +322,8 @@ export class AppState {
     bg.setAttribute('class', 'frame-bg');
     bg.setAttribute('x', '0'); bg.setAttribute('y', '0');
     bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h));
-    bg.setAttribute('fill', '#ffffff');
+    // Dim default frame background — easier on the eyes than a pure-white artboard.
+    bg.setAttribute('fill', '#333333');
     bg.setAttribute('pointer-events', 'none');
     g.appendChild(bg);
     return g;
