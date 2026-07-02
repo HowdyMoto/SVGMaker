@@ -8,6 +8,7 @@ import { PaintRegistry } from './paint-registry';
 import { ClipboardManager, type ClipboardHost } from './clipboard';
 import { SymbolRegistry, type SymbolHost } from './symbol-registry';
 import { EffectsManager, type EffectsHost } from './effects';
+import { MarkersManager, type MarkersHost } from './markers';
 import { nudgeTranslate, getRotation } from './transform';
 import { applyStrokeAlignment, STROKE_CLIP_PREFIX } from './stroke-align';
 import {
@@ -159,6 +160,7 @@ export class AppState {
    *  through the host adapter built in the constructor. */
   private clipboardMgr: ClipboardManager;
   private effects: EffectsManager;
+  private markers: MarkersManager;
 
   /**
    * Extra `xmlns:` prefixes declared on an imported file's root (Adobe's
@@ -231,6 +233,14 @@ export class AppState {
       onChange: () => this.onChangeCallback(),
     };
     this.effects = new EffectsManager(effectsHost);
+    const markersHost: MarkersHost = {
+      ensureDefs: () => this.ensureDefs(),
+      findShapeElement: (id) => this.findShapeById(id)?.element ?? null,
+      selectionElements: () => this.selectionElements(),
+      saveHistory: () => this.saveHistory(),
+      onChange: () => this.onChangeCallback(),
+    };
+    this.markers = new MarkersManager(markersHost);
     // Create the default frame ("Frame 1"). Frames are real <g data-frame>
     // container-shapes in the drawing layer; rebuildShapesFromDOM derives the
     // artboards cache from them.
@@ -2478,55 +2488,11 @@ export class AppState {
   // by ensureMarkerDefs() (defs aren't snapshotted). fill="context-stroke" makes
   // each arrowhead match its path's stroke colour.
 
-  /** Create the standard marker library in <defs> once (idempotent). */
-  ensureMarkerDefs(): void {
-    const defs = this.ensureDefs();
-    if (defs.querySelector('[id="mk-arrow"]')) return;
-    const SVG = 'http://www.w3.org/2000/svg';
-    const make = (id: string, w: string, h: string, refX: string, inner: string) => {
-      const m = document.createElementNS(SVG, 'marker');
-      m.setAttribute('id', id);
-      m.setAttribute('viewBox', '0 0 10 10');
-      m.setAttribute('markerUnits', 'strokeWidth');
-      m.setAttribute('orient', 'auto-start-reverse');
-      m.setAttribute('markerWidth', w); m.setAttribute('markerHeight', h);
-      m.setAttribute('refX', refX); m.setAttribute('refY', '5');
-      m.innerHTML = inner;
-      defs.appendChild(m);
-    };
-    make('mk-arrow', '8', '8', '9', '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>');
-    make('mk-dot', '6', '6', '5', '<circle cx="5" cy="5" r="4" fill="context-stroke"/>');
-    make('mk-open', '9', '9', '8', '<path d="M1,1 L9,5 L1,9" fill="none" stroke="context-stroke" stroke-width="1.5"/>');
-  }
-
-  getMarkers(id: string): { start: string; end: string } {
-    const el = this.findShapeById(id)?.element;
-    const read = (attr: string) => el?.getAttribute(attr)?.match(/url\(#(mk-[a-z]+)\)/)?.[1] ?? '';
-    return { start: read('marker-start'), end: read('marker-end') };
-  }
-
-  private applyMarkerTo(el: SVGElement, pos: 'start' | 'end', markerId: string | null): void {
-    const attr = `marker-${pos}`;
-    if (markerId) el.setAttribute(attr, `url(#${markerId})`);
-    else el.removeAttribute(attr);
-  }
-
-  setMarker(id: string, pos: 'start' | 'end', markerId: string | null): void {
-    const el = this.findShapeById(id)?.element;
-    if (!el) return;
-    this.ensureMarkerDefs();
-    this.applyMarkerTo(el, pos, markerId);
-    this.saveHistory();
-    this.onChangeCallback();
-  }
-
-  /** Apply a marker to every selected object in a single undo step. */
-  setSelectionMarker(pos: 'start' | 'end', markerId: string | null): void {
-    this.ensureMarkerDefs();
-    for (const el of this.selectionElements()) this.applyMarkerTo(el, pos, markerId);
-    this.saveHistory();
-    this.onChangeCallback();
-  }
+  // Markers (arrowheads) are owned by MarkersManager; these delegate.
+  ensureMarkerDefs(): void { this.markers.ensureDefs(); }
+  getMarkers(id: string): { start: string; end: string } { return this.markers.get(id); }
+  setMarker(id: string, pos: 'start' | 'end', markerId: string | null): void { this.markers.set(id, pos, markerId); }
+  setSelectionMarker(pos: 'start' | 'end', markerId: string | null): void { this.markers.setSelection(pos, markerId); }
 
   /** Blend mode (mix-blend-mode) of an object; 'normal' = none. Stored as inline
    *  style, which round-trips through the history/innerHTML snapshot. */
